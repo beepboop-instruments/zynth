@@ -14,68 +14,64 @@
 ****************************************************************************/
 
 /***************************** Include Files *******************************/
-
+// Xilinx
 #include "xparameters.h"
 #include "xstatus.h"
 #include "xil_types.h"
 #include "xil_assert.h"
-#include "xuartps_hw.h"
 #include "xuartps.h"
+#include "xiic.h"
 #include "xil_printf.h"
+// Zynth
+#include "utils.h"
+#include "midi.h"
+#include "i2c.h"
+#include "ssm2603.h"
 
-/************************** Constant Definitions ***************************/
 
-#define MIDI_BASEADDR 		XPAR_XUARTPS_0_BASEADDR
-#define MIDI_DEVICE_ID      XPAR_XUARTPS_0_DEVICE_ID
+/************************** Instance Definitions ***************************/
+// MIDI
+static XUartPs MidiPs;					/* The instance of the UART Driver */
+static u8 MidiBuffer[MIDI_BUFFER_SIZE];	/* MIDI receive buffer */
+// I2C
+static XIic Iic;		            	/* The instance of the IIC device */
+// Interrupt controller
+static INTC Intc; 	                	/* The instance of the Interrupt Controller Driver */
 
 
-/**************************** Type Definitions *****************************/
-
-/***************** Macros (Inline Functions) Definitions *******************/
-
-/************************** Function Prototypes ****************************/
-
-int UartPsEchoExample(u32 UartBaseAddress0, u16 DeviceId);
-
-/************************** Variable Definitions ***************************/
-
-XUartPs Uart_Ps;		/* The instance of the UART Driver */
-
-/***************************************************************************/
-/**
-*
+/***************************************************************************
 * Main function
-*
 ****************************************************************************/
 int main(void)
 {
-	u8 RecvChar;
 	int Status;
-	XUartPs_Config *Config;
 
-	/*
-	 * Initialize the UART driver so that it's ready to use
-	 * Look up the configuration in the config table and then initialize it.
-	 */
-	Config = XUartPs_LookupConfig(MIDI_DEVICE_ID);
-	if (NULL == Config) {
+	// Configure MIDI UART peripheral
+	Status = configMidi(&MidiPs);
+	if (Status != XST_SUCCESS)
+	{
+		xil_printf("Failed to configure midi interface\r\n");
 		return XST_FAILURE;
 	}
-
-	Status = XUartPs_CfgInitialize(&Uart_Ps, Config, Config->BaseAddress);
-	if (Status != XST_SUCCESS) {
+	// Configure the I2C peripheral
+	Status = configI2C(&Iic, &Intc);
+	if (Status != XST_SUCCESS)
+	{
+		xil_printf("Failed to configure I2C interface\r\n");
 		return XST_FAILURE;
 	}
+	// Configure the SSM2603 Audio Codec
+	Status = configCodec(&Iic);
+	if (Status != XST_SUCCESS)
+	{
+		xil_printf("Failed to configure the audio codec\r\n");
+	}
 
-	XUartPs_SetBaudRate(&Uart_Ps, 31250);
-
+	// Poll for midi messages received
 	while (1) {
-		 // Wait until there is data
+		// Wait until there is data then process received message
 		while (!XUartPs_IsReceiveData(MIDI_BASEADDR));
-		// Read uart rx buffer
-		RecvChar = XUartPs_ReadReg(MIDI_BASEADDR, XUARTPS_FIFO_OFFSET);
-		// Echo midi message to console
-		xil_printf("0x%x\n\r",RecvChar);
+		Status = rxMidiMsg(&MidiPs, MidiBuffer);
 	}
 
 }
