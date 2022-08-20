@@ -1,8 +1,32 @@
+/****************************************************************************/
+/**
+* i2c.c
+*
+* This file contains the functions for basic I2C transactions using the
+* AXI IIC module.
+*
+*
+* REVISION HISTORY:
+*
+* Ver   Who    Date     Changes
+* ----- ------ -------- -----------------------------------------------------
+* 0.00  tjh    08/19/22 Initial file
+*
+****************************************************************************/
+
 #include "i2c.h"
+
+/***************************************************************************
+* Variable definitions
+****************************************************************************/
 
 // I2C TX and RX flags
 volatile u8 TransmitComplete;	/* Flag to check completion of Transmission */
 volatile u8 ReceiveComplete;	/* Flag to check completion of Reception */
+
+/***************************************************************************
+* Function definitions
+****************************************************************************/
 
 // Handler function definitions
 static void StatusHandler(XIic *InstancePtr, int Event);
@@ -161,7 +185,7 @@ int i2c_writeread(XIic *Iic, u8 addr, u16 numBytes, u8 *readbuffer)
 	// turn off repeated start, so stop bit occurs at the end of read
 	Iic->Options = 0;
 	// get read data
-	Status = XIic_MasterRecv(Iic, readbuffer, 1);
+	Status = XIic_MasterRecv(Iic, readbuffer, numBytes);
 	RETURN_ON_FAILURE(Status);
 
 	// wait until the data is received

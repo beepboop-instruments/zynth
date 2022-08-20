@@ -1,5 +1,22 @@
-#include "midi.h"
+/****************************************************************************/
+/**
+* midi.c
+*
+* This file contains the functions for processing MIDI commands.
+*
+* REFERENCES:
+* - https://www.midi.org/specifications-old/item/table-1-summary-of-midi-message
+*
+*
+* REVISION HISTORY:
+*
+* Ver   Who    Date     Changes
+* ----- ------ -------- -----------------------------------------------------
+* 0.00  tjh    08/19/22 Initial file
+*
+****************************************************************************/
 
+#include "midi.h"
 
 /***************************************************************************
 * Configure the MIDI interface

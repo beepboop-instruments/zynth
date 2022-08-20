@@ -1,6 +1,10 @@
 #ifndef I2C_H_
 #define I2C_H_
 
+/***************************************************************************
+* Include files
+****************************************************************************/
+
 #include "utils.h"
 #include "xiic.h"
 #include "xil_exception.h"
@@ -10,6 +14,10 @@
 #else
  #include "xscugic.h"
 #endif
+
+/***************************************************************************
+* Variable definitions
+****************************************************************************/
 
 extern volatile u8 TransmitComplete;	/* Flag to check completion of Transmission */
 extern volatile u8 ReceiveComplete;		/* Flag to check completion of Reception */
