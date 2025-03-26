@@ -152,6 +152,16 @@ architecture struct_synth_engine of synth_engine is
       phase     : out unsigned(PHASE_WIDTH-1 downto 0)  -- Phase output
     );
   end component;
+
+  component amp_gate is
+    port (
+      clk            : in std_logic;
+      rst            : in std_logic;
+      note_amp       : in  unsigned(WIDTH_NOTE_GAIN-1 downto 0);
+      phase          : in  unsigned(WIDTH_PH_DATA-1 downto 0);
+      note_amp_gated : out unsigned(WIDTH_NOTE_GAIN-1 downto 0)
+    );
+  end component;
   
   component synth_note_mixer is
     generic (
@@ -185,10 +195,11 @@ architecture struct_synth_engine of synth_engine is
   signal wfrm_mixes_q : t_wave_data;
   signal wfrm_mix_d   : signed(DATA_WIDTH-1 downto 0);
 
-  signal phases     : t_ph_inc;
-  signal note_amps  : t_note_amp;
-  signal wfrm_amps  : t_wfrm_amp;
-  signal wfrm_phs   : t_wfrm_ph;
+  signal phases           : t_ph_inc;
+  signal note_amps        : t_note_amp;
+  signal note_amps_gated  : t_note_amp;
+  signal wfrm_amps        : t_wfrm_amp;
+  signal wfrm_phs         : t_wfrm_ph;
   
   signal out_amp   : unsigned(WIDTH_OUT_GAIN-1 downto 0);
   signal out_shift : unsigned(WIDTH_OUT_SHIFT-1 downto 0);
@@ -280,6 +291,7 @@ begin
 
   -- Instantiate 128 phase accumulators and waveform generators
   gen_accumulators: for i in I_LOWEST_NOTE to I_HIGHEST_NOTE generate
+
     u_phase_gen: phase_accumulator
       generic map (
         PHASE_WIDTH => WIDTH_PH_DATA
@@ -290,6 +302,16 @@ begin
         increment => ph_inc_lut(i),
         phase     => phases(i)
       );
+
+    u_amp_gate: amp_gate
+      port map (
+        clk            => clk,
+        rst            => rst,
+        note_amp       => note_amps(i),
+        phase          => phases(i),
+        note_amp_gated => note_amps_gated(i)
+      );
+
     end generate;
   
   u_waveform_gen: waveform_generator
@@ -325,7 +347,7 @@ begin
       sine_ph  => wfrm_phs(I_SINE),
       sine     => open,
       -- waveform mixed output
-      mix_amp  => note_amps(note_index),
+      mix_amp  => note_amps_gated(note_index),
       mix_out  => wfrm_mix_d
     );
 
