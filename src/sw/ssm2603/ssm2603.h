@@ -5,14 +5,17 @@
 * Include files
 ****************************************************************************/
 
-#include "i2c.h"
+#include "xiic.h"
 #include "sleep.h"
+
+#include "../i2c/i2c.h"
+#include "../utils.h"
 
 /***************************************************************************
 * Constant definitions
 ****************************************************************************/
 // 7-bit I2C address
-#define SSM2603_ADDR 0x1A
+#define SSM2603_I2C_ADDR 0x1A
 // Register map
 #define CODEC_R0  0x00
 #define CODEC_R1  0x01
@@ -144,6 +147,21 @@
 #define M_NGTH         0b011111000
 #define M_NGG          0b000000110
 #define M_NGAT         0b000000001
+// Register data field sizes
+#define W_INVOL        6
+#define W_HPVOL        7
+#define W_SIDETONE_ATT 2
+#define W_DEEMPH       2
+#define W_WL           2
+#define W_FORMAT       2
+#define W_SR           4
+#define W_ALSEL        2
+#define W_MAXGAIN      3
+#define W_ALCL         4
+#define W_DCY          4
+#define W_ATK          4
+#define W_NGTH         5
+#define W_NGG          2
 // Power management settings
 #define PM_REC_AND_PB     ( ~(M_PWROFF | M_CLKOUT | M_OSC | M_DAC | M_ADC | M_MIC | M_LINEIN) & 0xFF )
 #define PM_PB_ONLY_OSC    ( ~(M_PWROFF | M_CLKOUT | M_OSC | M_DAC) & 0xFF )
@@ -159,76 +177,83 @@
 /***************************************************************************
 * Structure definitions
 ****************************************************************************/
-struct codecSSM2603 {
+typedef struct {
 	// ADC input volume
-	u8 lrinboth      = 0;
-	u8 rlinboth      = 0;
-	u8 linmute       = 0;
-	u8 rinmute       = 0;
-	u8 linvol        = 0;
-	u8 rinvol        = 0;
+	u8 lrinboth;
+	u8 rlinboth;
+	u8 linmute;
+	u8 rinmute;
+	u8 linvol;
+	u8 rinvol;
 	// DAC output volume
-	u8 lrhpboth      = 0;
-	u8 rlhpboth      = 0;
-	u8 lhpvol        = 0;
-	u8 rhpvol        = 0;
+	u8 lrhpboth;
+	u8 rlhpboth;
+	u8 lhpvol;
+	u8 rhpvol;
 	// Analog audio path
-	u8 sidetone_attn = 0;
-	u8 sidetone_en   = 0;
-	u8 dacsel        = 0;
-	u8 bypass        = 0;
-	u8 insel         = 0;
-	u8 mutemic       = 0;
-	u8 micboost      = 0;
+	u8 sidetone_attn;
+	u8 sidetone_en;
+	u8 dacsel;
+	u8 bypass;
+	u8 insel;
+	u8 mutemic;
+	u8 micboost;
 	// Digital audio path
-	u8 hpor          = 0;
-	u8 dacmu         = 0;
-	u8 deemph        = 0;
-	u8 adchpf        = 0;
+	u8 hpor;
+	u8 dacmu;
+	u8 deemph;
+	u8 adchpf;
 	// Power management
-	u8 pwroff        = 0;
-	u8 clkout        = 0;
-	u8 osc           = 0;
-	u8 out           = 0;
-	u8 dac           = 0;
-	u8 adc           = 0;
-	u8 mic           = 0;
-	u8 linein        = 0;
+	u8 pwroff;
+	u8 clkout;
+	u8 osc;
+	u8 out;
+	u8 dac;
+	u8 adc;
+	u8 mic;
+	u8 linein;
 	// Digital audio I/F
-	u8 bclkinv       = 0;
-	u8 ms            = 0;
-	u8 lrswap        = 0;
-	u8 lrp           = 0;
-	u8 wl            = 0;
-	u8 format        = 0;
+	u8 bclkinv;
+	u8 ms;
+	u8 lrswap;
+	u8 lrp;
+	u8 wl;
+	u8 format;
 	// Sampling rate
-	u8 clkodiv2      = 0;
-	u8 clkdiv2       = 0;
-	u8 sr            = 0;
-	u8 bosr          = 0;
-	u8 usb           = 0;
+	u8 clkodiv2;
+	u8 clkdiv2;
+	u8 sr;
+	u8 bosr;
+	u8 usb;
 	// Active
-	u8 active        = 0;
+	u8 active;
 	// ALC control 1
-	u8 alcsel        = 0;
-	u8 maxgain       = 0;
-	u8 alcl          = 0;
+	u8 alcsel;
+	u8 maxgain;
+	u8 alcl;
 	// ALC control 2
-	u8 dcy           = 0;
-	u8 atk           = 0;
+	u8 dcy;
+	u8 atk;
 	// Noise gate
-	u8 ngth          = 0;
-	u8 ngg           = 0;
-	u8 ngat          = 0;
-};
+	u8 ngth;
+	u8 ngg;
+	u8 ngat;
+} codecSSM2603_t;
+
+extern codecSSM2603_t codecSSM2603;
 
 /***************************************************************************
 * Function definitions
 ****************************************************************************/
-int  configCodec(XIic *Iic);
-int  get_codec_config(XIic *Iic, codecSSM2603 *myCodec);
-void print_codec_config(codecSSM2603 *myCodec);
-int  i2c_codec_write(XIic *Iic, u8 reg, u16 data);
-int  i2c_codec_read(XIic *Iic, u8 reg, u16 numBytes, u8 *readbuffer);
+
+int  configCodec(void);
+
+int  get_codec_config(void);
+
+void print_codec_config(void);
+
+int  codec_write(AddressType reg, u16 data);
+
+int  codec_read(AddressType reg, u16 *data);
 
 #endif /* SSM2603_H_ */

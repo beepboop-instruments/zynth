@@ -1,0 +1,244 @@
+----------------------------------------------------------------------------------
+-- Company: beepboop
+-- Engineer: Tyler Huddleston
+-- 
+-- Create Date: 03/08/2025
+-- Design Name: Synthesizer Engine
+-- Module Name: Synthesizer Engine Testbench
+-- Description: 
+--   Testbench for the Synthesizer Engine simulation.
+-- 
+----------------------------------------------------------------------------------
+
+library ieee;
+  use ieee.std_logic_1164.all;
+  use ieee.numeric_std.all;
+
+library xil_defaultlib;
+  use xil_defaultlib.synth_pkg.all;
+  use xil_defaultlib.music_note_pkg.all;
+
+entity synth_engine_tb is
+end synth_engine_tb;
+
+architecture tb of synth_engine_tb is
+
+  -- AXI signals
+  signal clk      : std_logic := '0';
+  signal rst      : std_logic := '1';
+
+  signal awaddr   : std_logic_vector(9 downto 0);
+  signal awvalid  : std_logic;
+  signal awready  : std_logic;
+
+  signal wdata    : std_logic_vector(31 downto 0);
+  signal wstrb    : std_logic_vector(3 downto 0);
+  signal wvalid   : std_logic;
+  signal wready   : std_logic;
+
+  signal bresp    : std_logic_vector(1 downto 0);
+  signal bvalid   : std_logic;
+  signal bready   : std_logic;
+
+  signal araddr   : std_logic_vector(9 downto 0);
+  signal arvalid  : std_logic;
+  signal arready  : std_logic;
+
+  signal rdata    : std_logic_vector(31 downto 0);
+  signal rresp    : std_logic_vector(1 downto 0);
+  signal rvalid   : std_logic;
+  signal rready   : std_logic;
+
+  -- Clock process
+  constant clk_period  : time := 40 ns;
+  constant clk_period2 : time := 80 ns;
+    
+  -- DUT Component (Assuming entity is named axi_slave)
+  component synth_engine is
+    generic (
+      -- AXI parameters
+      C_S_AXI_DATA_WIDTH  : integer  := 32;
+      C_S_AXI_ADDR_WIDTH  : integer  := 10;
+      -- waveform parameters
+      DATA_WIDTH     : natural := WIDTH_WAVE_DATA;
+      OUT_DATA_WIDTH : natural := WIDTH_WAVE_DATA+8;
+      -- clock frequency
+      CLK_MHZ        : natural := 100
+    );
+    port (
+      -- clock and reset
+      clk           : in std_logic;
+      rst           : in std_logic;
+
+      -- AXI control interface
+      s_axi_awaddr  : in std_logic_vector(9 downto 0);
+      s_axi_awprot  : in std_logic_vector(2 downto 0);
+      s_axi_awvalid  : in std_logic;
+      s_axi_awready  : out std_logic;
+      s_axi_wdata    : in  std_logic_vector(31 downto 0);
+      s_axi_wstrb    : in  std_logic_vector(3 downto 0);
+      s_axi_wvalid  : in  std_logic;
+      s_axi_wready  : out std_logic;
+      s_axi_bresp    : out std_logic_vector(1 downto 0);
+      s_axi_bvalid  : out std_logic;
+      s_axi_bready  : in  std_logic;
+      s_axi_araddr  : in  std_logic_vector(9 downto 0);
+      s_axi_arprot  : in  std_logic_vector(2 downto 0);
+      s_axi_arvalid  : in  std_logic;
+      s_axi_arready  : out std_logic;
+      s_axi_rdata    : out std_logic_vector(31 downto 0);
+      s_axi_rresp    : out std_logic_vector(1 downto 0);
+      s_axi_rvalid  : out std_logic;
+      s_axi_rready  : in  std_logic;
+
+      -- Digital audio output
+      audio_out     : out std_logic_vector(OUT_DATA_WIDTH-1 downto 0)
+    );
+  end component synth_engine;
+    
+begin
+  -- Instantiate the DUT
+
+  uut: synth_engine
+    generic map (
+      DATA_WIDTH     => WIDTH_WAVE_DATA,
+      OUT_DATA_WIDTH => WIDTH_WAVE_DATA+8,
+      CLK_MHZ        => 100
+    )
+    port map (
+      -- AXI control interface
+      clk           => clk,
+      rst           => rst,
+      s_axi_awaddr  => awaddr,
+      s_axi_awprot  => "000",
+      s_axi_awvalid  => awvalid,
+      s_axi_awready  => awready,
+      s_axi_wdata    => wdata,
+      s_axi_wstrb    => wstrb,
+      s_axi_wvalid  => wvalid,
+      s_axi_wready  => wready,
+      s_axi_bresp    => bresp,
+      s_axi_bvalid  => bvalid,
+      s_axi_bready  => bready,
+      s_axi_araddr  => araddr,
+      s_axi_arprot  => "000",
+      s_axi_arvalid  => arvalid,
+      s_axi_arready  => arready,
+      s_axi_rdata    => rdata,
+      s_axi_rresp    => rresp,
+      s_axi_rvalid  => rvalid,
+      s_axi_rready  => rready,
+
+      -- Digital audio output
+      audio_out     => open
+    );
+  
+  -- Clock Process
+  clk_process : process
+  begin
+      while true loop
+          clk <= '0';
+          wait for clk_period / 2;
+          clk <= '1';
+          wait for clk_period / 2;
+      end loop;
+  end process;
+  
+  -- Stimulus Process
+  stimulus : process
+  
+    procedure axi_write(
+      address : in std_logic_vector(9 downto 0);
+      data : in std_logic_vector(31 downto 0)
+    ) is begin
+      awaddr  <= address;
+      awvalid <= '1';
+      wdata   <= data;
+      wstrb   <= "1111";
+      wvalid  <= '1';
+      bready  <= '1';
+
+      wait until rising_edge(clk);
+      awvalid <= '0';
+      wvalid  <= '0';
+
+      wait until rising_edge(clk);
+      if bvalid = '0' then
+          wait until bvalid = '1';
+      end if;
+      
+      bready  <= '0';
+      
+    end procedure;
+    
+    procedure axi_read(
+      address : in std_logic_vector(9 downto 0)
+    ) is begin
+      araddr  <= address;
+      arvalid <= '1';
+      rready  <= '1';
+      
+      wait until rising_edge(clk);
+      arvalid <= '0';
+      
+      wait until rising_edge(clk);
+      rready  <= '0';
+    
+    end procedure;
+    
+  begin
+    -- Reset
+    rst      <= '1';
+    awaddr  <= "0000000000";
+    awvalid <= '0';
+    wdata   <= x"00000000";
+    wstrb   <= "0000";
+    wvalid  <= '0';
+    bready  <= '0';
+    araddr  <= "0000000000";
+    arvalid <= '0';
+    rready  <= '0';
+    wait for clk_period2;
+    rst     <= '0';
+    wait for clk_period2;
+    
+    -- Write to register 0
+    axi_write("0000000000", x"00000018");
+    -- Read from register 0
+    axi_read("0000000000");
+    -- Write to note 69 (A4) reg
+    axi_write("0100010100", x"0000007F");
+    -- Write to note 80 reg
+    --axi_write("0100100000", x"0000FFF0");
+    -- Write to note 127 reg
+    axi_write("0111111100", x"000000A5");
+    -- Write to output amplitude register
+    axi_write("1000100000", x"0000000A");
+    axi_write("1000100100", x"0000003F");
+    -- Write to pulse reg
+    axi_write("1000000000", x"00004000");
+    axi_write("1000000100", x"0000000F");
+    -- Write to ramp reg
+    axi_write("1000001000", x"00000000");
+    -- Write to saw reg
+    axi_write("1000001100", x"00000000");
+    -- Write to tri reg
+    axi_write("1000010000", x"00000000");
+    -- Write to sin reg
+    axi_write("1000010100", x"0000000F");
+    -- Write to wrapback reg
+    axi_write("1111111100", x"ABCD1234");
+    -- Read from wrapback reg
+    axi_read("1111111100");
+    -- Read from rev reg
+    axi_read("1111100000");
+    -- Read from date reg
+    axi_read("1111100100");
+    
+    -- End Simulation
+    wait for clk_period2;
+    report "Testbench completed." severity note;
+  wait;
+end process;
+
+end tb;
