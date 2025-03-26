@@ -21,22 +21,27 @@
 #include "xil_assert.h"
 #include "xuartps.h"
 #include "xiic.h"
+#include "xil_io.h"
 #include "xil_printf.h"
 // Zynth
-#include "utils.h"
-#include "midi.h"
-#include "i2c.h"
-#include "ssm2603.h"
+#include "utils/utils.h"
+#include "midi/midi.h"
+#include "i2c/i2c.h"
+#include "ssm2603/ssm2603.h"
+#include "synth_ctrl/synth_ctrl.h"
 
 
 /************************** Instance Definitions ***************************/
-// MIDI
-static XUartPs MidiPs;					/* The instance of the UART Driver */
-static u8 MidiBuffer[MIDI_BUFFER_SIZE];	/* MIDI receive buffer */
-// I2C
-static XIic Iic;		            	/* The instance of the IIC device */
-// Interrupt controller
-static INTC Intc; 	                	/* The instance of the Interrupt Controller Driver */
+/*
+ * The following constants map to the XPAR parameters created in the
+ * xparameters.h file. They are defined here such that a user can easily
+ * change all the needed parameters in one place.
+ */
+#ifndef SDT
+#define UART_DEVICE_ID              XPAR_XUARTPS_0_DEVICE_ID
+#else
+#define	XUARTPS_BASEADDRESS	XPAR_XUARTPS_0_BASEADDR
+#endif
 
 
 /***************************************************************************
@@ -46,32 +51,30 @@ int main(void)
 {
 	int Status;
 
+    Status = checkSynthCtrl();
+
+    setWaveAmp(SINE_WAVE, 0x1F);
+    setOutAmp(0x3F);
+    setOutShift(0xA);
+	
+	// Configure audio codec
+    if (configCodec()) { 
+        xil_printf("Config codec error occurred!\r\n");
+    }
+
 	// Configure MIDI UART peripheral
-	Status = configMidi(&MidiPs);
-	if (Status != XST_SUCCESS)
-	{
+	if (configMidi(XUARTPS_BASEADDRESS)) {
 		xil_printf("Failed to configure midi interface\r\n");
 		return XST_FAILURE;
 	}
-	// Configure the I2C peripheral
-	Status = configI2C(&Iic, &Intc);
-	if (Status != XST_SUCCESS)
-	{
-		xil_printf("Failed to configure I2C interface\r\n");
-		return XST_FAILURE;
-	}
-	// Configure the SSM2603 Audio Codec
-	Status = configCodec(&Iic);
-	if (Status != XST_SUCCESS)
-	{
-		xil_printf("Failed to configure the audio codec\r\n");
-	}
 
-	// Poll for midi messages received
+    // Poll for midi messages received
 	while (1) {
 		// Wait until there is data then process received message
-		while (!XUartPs_IsReceiveData(MIDI_BASEADDR));
-		Status = rxMidiMsg(&MidiPs, MidiBuffer);
+		while (!XUartPs_IsReceiveData(XUARTPS_BASEADDRESS));
+		rxMidiMsg();
 	}
+
+    return Status;
 
 }

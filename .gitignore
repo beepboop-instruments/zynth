@@ -1,0 +1,3 @@
+# Ignore DVT VSCode extension files
+.dvt/
+dvt*
