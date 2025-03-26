@@ -6,9 +6,9 @@
 ****************************************************************************/
 
 #include "xuartps.h"
-#include "utils.h"
+#include "../utils/utils.h"
 
-#include "../synth_ctrl.h"
+#include "../synth_ctrl/synth_ctrl.h"
 
 /***************************************************************************
 * Constant definitions

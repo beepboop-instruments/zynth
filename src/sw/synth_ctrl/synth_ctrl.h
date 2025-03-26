@@ -36,8 +36,8 @@ typedef uint8_t wave_type;
 #define OFFSET_SAW_REG         0x20C
 #define OFFSET_TRI_REG         0x210
 #define OFFSET_SINE_REG        0x214
-#define OFFSET_GAIN_SCALE_REG  0x220
-#define OFFSET_GAIN_SHIFT_REG  0x224
+#define OFFSET_GAIN_SHIFT_REG  0x220
+#define OFFSET_GAIN_SCALE_REG  0x224
 #define OFFSET_REV_REG         0x3E0
 #define OFFSET_DATE_REG        0x3E4
 #define OFFSET_WRAPBACK_REG    0x3FC

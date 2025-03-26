@@ -9,7 +9,7 @@
 #include "sleep.h"
 
 #include "../i2c/i2c.h"
-#include "../utils.h"
+#include "../utils/utils.h"
 
 /***************************************************************************
 * Constant definitions

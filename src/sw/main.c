@@ -54,10 +54,8 @@ int main(void)
     Status = checkSynthCtrl();
 
     setWaveAmp(SINE_WAVE, 0x1F);
-    setOutAmp(0x7F);
-    setOutShift(7);
-
-    readSynthCtrl();
+    setOutAmp(0x3F);
+    setOutShift(0xA);
 	
 	// Configure audio codec
     if (configCodec()) { 
