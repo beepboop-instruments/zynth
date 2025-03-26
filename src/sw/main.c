@@ -55,7 +55,7 @@ int main(void)
 
     setWaveAmp(SINE_WAVE, 0x1F);
     setOutAmp(0x3F);
-    setOutShift(0xA);
+    setOutShift(0x8);
 	
 	// Configure audio codec
     if (configCodec()) { 
