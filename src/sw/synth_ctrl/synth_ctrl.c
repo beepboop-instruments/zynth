@@ -25,6 +25,7 @@ int initSynth(void) {
   setWaveAmp(SINE_WAVE, 0x1F);
   setOutAmp(0x3F);
   setOutShift(0x8);
+  setPulseWidth(0x8000);
 
   return XST_SUCCESS;
 }
