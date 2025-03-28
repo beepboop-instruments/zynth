@@ -141,10 +141,10 @@ int  rxMidiMsg()
       Status = MidiPitchBend(ch);
 		  break;
     case SYS_CMD:
-      Status = MidiMsgSystemCommon(ch);
+      Status = MidiMsgSystemCommon(ch-1);
       break;
     default:
-      debug_print("MIDI message: 0x%02X\n\r", MidiBuffer[0]);
+      debug_print("midi message: 0x%02X\n\r", MidiBuffer[0]);
       Status = XST_SUCCESS;
       break;
 	}
@@ -211,7 +211,7 @@ int MidiPolyPressure(u8 Ch) {
   u8 key = MidiBuffer[0];
   u8 value = MidiBuffer[1];
 
-  debug_print("MIDI %i polyphonic pressure: %s %03i \n\r", Ch, midi_note_names[key], value);
+  debug_print("midi %i polyphonic pressure: %s %03i \n\r", Ch, midi_note_names[key], value);
 
   return XST_SUCCESS;
 }
@@ -230,7 +230,7 @@ int MidiPolyPressure(u8 Ch) {
 ****************************************************************************/
 int MidiControlChange(u8 Ch) {
 
-  char *change;
+  char *change = 0;
 
   // read note and value
   readMidi(2);
@@ -342,12 +342,11 @@ int MidiControlChange(u8 Ch) {
       return XST_SUCCESS;
 
     default:
-      debug_print("MIDI %i controller %i: %i.\r\n", Ch, control, value);
-
-    return XST_SUCCESS;    
+      debug_print("midi %i controller %i: %i.\r\n", Ch, control, value);
+      break;
   }
 
-  debug_print("MIDI %i %s: %i.\r\n", Ch, change, value);
+  debug_print("midi %i %s: %i.\r\n", Ch, change, value);
   
   return XST_SUCCESS;
 }
@@ -370,7 +369,7 @@ int MidiProgChange(u8 Ch) {
   readMidi(1);
   u8 value = MidiBuffer[0];
 
-  debug_print("MIDI %i program change: 0x%02X \n\r", Ch, value);
+  debug_print("midi %i program change: 0x%02X \n\r", Ch, value);
 
   return XST_SUCCESS;
 }
@@ -396,7 +395,7 @@ int MidiChannelPressure(u8 Ch) {
   readMidi(1);
   u8 value = MidiBuffer[0];
 
-  debug_print("MIDI %i channel pressure: %03i \n\r", Ch, value);
+  debug_print("midi %i channel pressure: %03i \n\r", Ch, value);
 
   return XST_SUCCESS;
 }
@@ -423,7 +422,7 @@ int MidiPitchBend(u8 Ch) {
   readMidi(2);
   int pitchBend = (MidiBuffer[1]<<7) + MidiBuffer[0] - 0x2000;
 
-  debug_print("MIDI %i pitch bend: %04i \n\r", Ch, pitchBend);
+  debug_print("midi %i pitch bend: %04i \n\r", Ch, pitchBend);
 
   return XST_SUCCESS;
 }
@@ -441,7 +440,7 @@ int MidiPitchBend(u8 Ch) {
 ****************************************************************************/
 int MidiMsgSystemCommon(u8 Cmd) {
 
-  switch(Cmd) {        
+  switch(Cmd) {
     case SYS_EXCL_START:
      /* System Exclusive. This message type allows manufacturers to create
       * their own messages (such as bulk dumps, patch parameters, and other
@@ -456,7 +455,7 @@ int MidiMsgSystemCommon(u8 Cmd) {
       * (Note: Only Real-Time messages may be interleaved with a System
       * Exclusive.)
       */
-      debug_print("MIDI System Exclusive:");
+      debug_print("midi System Exclusive:");
       while (MidiBuffer[0] != SYS_EXCL_END) {
         readMidi(1);
         debug_print(" %02X", MidiBuffer[0]);
@@ -471,7 +470,7 @@ int MidiMsgSystemCommon(u8 Cmd) {
       readMidi(1);
       u8 type = MidiBuffer[0]>>4;
       u8 values = MidiBuffer[0] & 0x0F;
-      debug_print("MIDI Time Code Quarter Frame - type: %i, values: %i.\r\n", type, values);
+      debug_print("midi time code quarter frame - type: %i, values: %i.\r\n", type, values);
       break;
     
     case SYS_POS_PTR:
@@ -481,7 +480,7 @@ int MidiMsgSystemCommon(u8 Cmd) {
       */
       readMidi(2);
       int position = (MidiBuffer[1]<<7) + MidiBuffer[0];
-      debug_print("MIDI Song Position Pointer: %i.\r\n", position);            
+      debug_print("midi song position pointer: %i.\r\n", position);            
       break;
     
     case SYS_SONG_SEL:
@@ -489,14 +488,14 @@ int MidiMsgSystemCommon(u8 Cmd) {
       */
       readMidi(1);
       u8 song = MidiBuffer[0];
-      debug_print("MIDI Song Select: %i.\r\n", song);
+      debug_print("midi song select: %i.\r\n", song);
       break;
     
     case SYS_TUNE:
      /* Tune Request. Upon receiving a Tune Request, all analog synthesizers
       * should tune their oscillators.
       */
-      debug_print("MIDI Tune Request.\r\n");
+      debug_print("midi tune request.\r\n");
       break;
 
     case SYS_CLK:
@@ -507,19 +506,19 @@ int MidiMsgSystemCommon(u8 Cmd) {
     case SYS_START:
      /* Timing Clock. Sent 24 times per quarter note when synchronization is required.
       */
-      debug_print("MIDI Start Sequence.\r\n");
+      debug_print("midi start sequence.\r\n");
       break;
 
     case SYS_CONTINUE:
      /* Continue. Continue at the point the sequence was Stopped.
       */
-      debug_print("MIDI Continue Sequence.\r\n");
+      debug_print("midi continue sequence.\r\n");
       break;
 
     case SYS_STOP:
      /* Stop. Stop the current sequence.
       */
-      debug_print("MIDI Stop Sequence.\r\n");
+      debug_print("midi stop sequence.\r\n");
       break;
     
     case SYS_SENSING:
@@ -531,7 +530,7 @@ int MidiMsgSystemCommon(u8 Cmd) {
       * terminated. At termination, the receiver will turn off all voices
       * and return to normal (non- active sensing) operation. 
       */
-      debug_print("MIDI Active Sensing.\r\n");
+      debug_print("midi active sensing.\r\n");
       break;
     
     case SYS_RESET:
@@ -539,11 +538,12 @@ int MidiMsgSystemCommon(u8 Cmd) {
       * should be used sparingly, preferably under manual control. In
       * particular, it should not be sent on power-up.
       */
-      debug_print("MIDI System Reset.\r\n");
+      debug_print("midi system reset.\r\n");
       break; 
 
     default:
-      debug_print("MIDI system message: 0x%02X\n\r", MidiBuffer[0]);
+      debug_print("midi system message: 0x%02X\n\r", MidiBuffer[0]);
+      break;
   }        
 
   return XST_SUCCESS;
