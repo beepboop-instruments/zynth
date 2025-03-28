@@ -17,6 +17,19 @@
 #include "../utils/utils.h"
 
 /***************************************************************************
+* Initialize synthesizer controller
+****************************************************************************/
+
+int initSynth(void) {
+
+  setWaveAmp(SINE_WAVE, 0x1F);
+  setOutAmp(0x3F);
+  setOutShift(0x8);
+
+  return XST_SUCCESS;
+}
+
+/***************************************************************************
 * Check synthesizer controller
 ****************************************************************************/
 
@@ -60,6 +73,10 @@ int checkSynthCtrl(void) {
 
   return XST_SUCCESS;
 }
+
+/***************************************************************************
+* Read synthesizer controller memory map
+****************************************************************************/
 
 int readSynthCtrl(void) {
 

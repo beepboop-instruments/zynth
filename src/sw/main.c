@@ -30,51 +30,33 @@
 #include "ssm2603/ssm2603.h"
 #include "synth_ctrl/synth_ctrl.h"
 
-
-/************************** Instance Definitions ***************************/
-/*
- * The following constants map to the XPAR parameters created in the
- * xparameters.h file. They are defined here such that a user can easily
- * change all the needed parameters in one place.
- */
-#ifndef SDT
-#define UART_DEVICE_ID              XPAR_XUARTPS_0_DEVICE_ID
-#else
-#define	XUARTPS_BASEADDRESS	XPAR_XUARTPS_0_BASEADDR
-#endif
-
-
 /***************************************************************************
 * Main function
 ****************************************************************************/
+
 int main(void)
 {
-	int Status;
+	// Initialize synthesizer
+	if (initSynth() || checkSynthCtrl()) {
+		xil_printf("Synthesizer initialization error occurred!\r\n");
+	}
 
-    Status = checkSynthCtrl();
-
-    setWaveAmp(SINE_WAVE, 0x1F);
-    setOutAmp(0x3F);
-    setOutShift(0x8);
-	
 	// Configure audio codec
-    if (configCodec()) { 
-        xil_printf("Config codec error occurred!\r\n");
-    }
+	if (configCodec()) { 
+		xil_printf("Config codec error occurred!\r\n");
+	}
 
 	// Configure MIDI UART peripheral
-	if (configMidi(XUARTPS_BASEADDRESS)) {
+	if (configMidi(MIDI_BASEADDR)) {
 		xil_printf("Failed to configure midi interface\r\n");
 		return XST_FAILURE;
 	}
 
-    // Poll for midi messages received
+	// Poll for midi messages received
 	while (1) {
 		// Wait until there is data then process received message
-		while (!XUartPs_IsReceiveData(XUARTPS_BASEADDRESS));
+		while (!XUartPs_IsReceiveData(MIDI_BASEADDR));
 		rxMidiMsg();
 	}
-
-    return Status;
 
 }

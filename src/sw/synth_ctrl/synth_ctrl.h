@@ -66,6 +66,7 @@ typedef uint8_t wave_type;
 * Function definitions
 ****************************************************************************/
 
+int initSynth(void);
 int checkSynthCtrl(void);
 int readSynthCtrl(void);
 
