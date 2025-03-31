@@ -15,8 +15,8 @@ library IEEE;
   use IEEE.NUMERIC_STD.ALL;
 
 package synth_pkg is
-  constant SYNTH_ENG_REV  : std_logic_vector := x"00000000";
-  constant SYNTH_ENG_DATE : std_logic_vector := x"03242025";
+  constant SYNTH_ENG_REV  : std_logic_vector := x"00000001";
+  constant SYNTH_ENG_DATE : std_logic_vector := x"03302025";
 
   -- memmory-mapped address definitions
   constant OFFSET_PULSE_WIDTH_REG : std_logic_vector := "0000000";
@@ -53,8 +53,8 @@ package synth_pkg is
   constant I_SINE  : natural := 4;
 
   -- array data types
-  type t_ph_inc_lut  is array (0 to 127) of unsigned(31 downto 0);
-  type t_ph_inc      is array (I_LOWEST_NOTE to I_HIGHEST_NOTE) of unsigned(31 downto 0);
+  type t_ph_inc_lut  is array (0 to 127) of unsigned(WIDTH_PH_DATA-1 downto 0);
+  type t_ph_inc      is array (I_LOWEST_NOTE to I_HIGHEST_NOTE) of unsigned(WIDTH_PH_DATA-1 downto 0);
   type t_wave_data   is array (I_LOWEST_NOTE to I_HIGHEST_NOTE) of signed(WIDTH_WAVE_DATA-1 downto 0);
   type t_note_amp    is array (0 to 127) of unsigned(WIDTH_NOTE_GAIN-1 downto 0);
   type t_wfrm_amp    is array (0 to NUM_WFRMS-1) of unsigned(WIDTH_WAVE_GAIN-1 downto 0);

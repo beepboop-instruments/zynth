@@ -17,11 +17,31 @@
 ****************************************************************************/
 
 #include "midi.h"
+#include "pitch.h"
 #include <xstatus.h>
 
 XUartPs MidiPs; /* The instance of the UART Driver */
 u8 MidiBuffer[MIDI_BUFFER_SIZE];	/* MIDI receive buffer */
 const char *midi_note_names[] = MIDI_NOTE_NAMES;
+u32 FreqWords[128];
+
+/***************************************************************************
+* Reset frequency word array back to defaults
+****************************************************************************/
+
+void initFreqWords(void) {
+    for (u8 i = 0; i < 128; i ++) {
+        FreqWords[i] = FreqWordDefaults[i];
+    }
+    return;
+}
+
+void writeFreqWords(void) {
+  for (u8 i = 0; i < 128; i ++) {
+    setPitch(i, FreqWords[i]);
+  }
+  return;    
+}
 
 /***************************************************************************
 * Configure the MIDI interface
@@ -45,6 +65,8 @@ int configMidi(u32 BaseAddress)
 #ifdef SDT
 	(void)MidiPs;
 #endif
+
+    initFreqWords();
 
 	/*
 	 * Initialize the UART driver so that it's ready to use.
@@ -420,9 +442,16 @@ int MidiPitchBend(u8 Ch) {
     
   // read pitch offset
   readMidi(2);
-  int pitchBend = (MidiBuffer[1]<<7) + MidiBuffer[0] - 0x2000;
+  int pitchBend = (MidiBuffer[1]<<7) + MidiBuffer[0];
+  double scale = get_pitch_bend_scale(pitchBend);
 
-  debug_print("midi %i pitch bend: %04i \n\r", Ch, pitchBend);
+  for (u8 i = 0; i < 128; i ++) {
+    FreqWords[i] = (u32)((double)(FreqWordDefaults[i]) * scale);
+  }
+
+  writeFreqWords();
+
+  xil_printf("midi %i pitch bend: %i\n\r", Ch, pitchBend-8192);
 
   return XST_SUCCESS;
 }

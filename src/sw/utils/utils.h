@@ -32,4 +32,6 @@
         if (frac_part < 0) frac_part = -frac_part; /* Handle negative numbers */ \
     } while (0)
 
+#define ARRAY_COPY(dest, src, size) memcpy((dest), (src), (size) * sizeof(*(src)))
+
 #endif /* UTILS_H_ */

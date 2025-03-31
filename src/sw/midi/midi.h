@@ -17,7 +17,7 @@
 #define OFF 0
 
 // midi instance
-#define MIDI_BASEADDR 		XPAR_XUARTPS_0_BASEADDR
+#define MIDI_BASEADDR     XPAR_XUARTPS_0_BASEADDR
 #define MIDI_DEVICE_ID    XPAR_XUARTPS_0_DEVICE_ID
 #define MIDI_BUFFER_SIZE  128
 
@@ -87,6 +87,7 @@ extern u8 MidiBuffer[MIDI_BUFFER_SIZE];
 * Function definitions
 ****************************************************************************/
 int configMidi(u32 BaseAddress);
+void initFreqWords(void);
 void readMidi(int numBytes);
 int rxMidiMsg(void);
 int MidiNoteOnOff(u8 Ch, u8 OnOff);

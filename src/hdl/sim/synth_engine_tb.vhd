@@ -23,15 +23,18 @@ end synth_engine_tb;
 
 architecture tb of synth_engine_tb is
 
+  constant AXI_DATA_WIDTH : integer := 32;
+  constant AXI_ADDR_WIDTH : integer := 31;
+
   -- AXI signals
   signal clk      : std_logic := '0';
   signal rst      : std_logic := '1';
 
-  signal awaddr   : std_logic_vector(9 downto 0);
+  signal awaddr   : std_logic_vector(AXI_ADDR_WIDTH-1 downto 0);
   signal awvalid  : std_logic;
   signal awready  : std_logic;
 
-  signal wdata    : std_logic_vector(31 downto 0);
+  signal wdata    : std_logic_vector(AXI_DATA_WIDTH-1 downto 0);
   signal wstrb    : std_logic_vector(3 downto 0);
   signal wvalid   : std_logic;
   signal wready   : std_logic;
@@ -40,11 +43,11 @@ architecture tb of synth_engine_tb is
   signal bvalid   : std_logic;
   signal bready   : std_logic;
 
-  signal araddr   : std_logic_vector(9 downto 0);
+  signal araddr   : std_logic_vector(AXI_ADDR_WIDTH-1 downto 0);
   signal arvalid  : std_logic;
   signal arready  : std_logic;
 
-  signal rdata    : std_logic_vector(31 downto 0);
+  signal rdata    : std_logic_vector(AXI_DATA_WIDTH-1 downto 0);
   signal rresp    : std_logic_vector(1 downto 0);
   signal rvalid   : std_logic;
   signal rready   : std_logic;
@@ -58,12 +61,10 @@ architecture tb of synth_engine_tb is
     generic (
       -- AXI parameters
       C_S_AXI_DATA_WIDTH  : integer  := 32;
-      C_S_AXI_ADDR_WIDTH  : integer  := 10;
+      C_S_AXI_ADDR_WIDTH  : integer  := 31;
       -- waveform parameters
       DATA_WIDTH     : natural := WIDTH_WAVE_DATA;
-      OUT_DATA_WIDTH : natural := WIDTH_WAVE_DATA+8;
-      -- clock frequency
-      CLK_MHZ        : natural := 100
+      OUT_DATA_WIDTH : natural := WIDTH_WAVE_DATA+8
     );
     port (
       -- clock and reset
@@ -71,25 +72,25 @@ architecture tb of synth_engine_tb is
       rst           : in std_logic;
 
       -- AXI control interface
-      s_axi_awaddr  : in std_logic_vector(9 downto 0);
-      s_axi_awprot  : in std_logic_vector(2 downto 0);
+      s_axi_awaddr   : in std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
+      s_axi_awprot   : in std_logic_vector(2 downto 0);
       s_axi_awvalid  : in std_logic;
       s_axi_awready  : out std_logic;
-      s_axi_wdata    : in  std_logic_vector(31 downto 0);
+      s_axi_wdata    : in  std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
       s_axi_wstrb    : in  std_logic_vector(3 downto 0);
-      s_axi_wvalid  : in  std_logic;
-      s_axi_wready  : out std_logic;
+      s_axi_wvalid   : in  std_logic;
+      s_axi_wready   : out std_logic;
       s_axi_bresp    : out std_logic_vector(1 downto 0);
-      s_axi_bvalid  : out std_logic;
-      s_axi_bready  : in  std_logic;
-      s_axi_araddr  : in  std_logic_vector(9 downto 0);
-      s_axi_arprot  : in  std_logic_vector(2 downto 0);
+      s_axi_bvalid   : out std_logic;
+      s_axi_bready   : in  std_logic;
+      s_axi_araddr   : in  std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
+      s_axi_arprot   : in  std_logic_vector(2 downto 0);
       s_axi_arvalid  : in  std_logic;
       s_axi_arready  : out std_logic;
-      s_axi_rdata    : out std_logic_vector(31 downto 0);
+      s_axi_rdata    : out std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
       s_axi_rresp    : out std_logic_vector(1 downto 0);
-      s_axi_rvalid  : out std_logic;
-      s_axi_rready  : in  std_logic;
+      s_axi_rvalid   : out std_logic;
+      s_axi_rready   : in  std_logic;
 
       -- Digital audio output
       audio_out     : out std_logic_vector(OUT_DATA_WIDTH-1 downto 0)
@@ -101,9 +102,10 @@ begin
 
   uut: synth_engine
     generic map (
+      C_S_AXI_DATA_WIDTH  => AXI_DATA_WIDTH,
+      C_S_AXI_ADDR_WIDTH  => AXI_ADDR_WIDTH,
       DATA_WIDTH     => WIDTH_WAVE_DATA,
-      OUT_DATA_WIDTH => WIDTH_WAVE_DATA+8,
-      CLK_MHZ        => 100
+      OUT_DATA_WIDTH => WIDTH_WAVE_DATA+8
     )
     port map (
       -- AXI control interface
@@ -148,8 +150,8 @@ begin
   stimulus : process
   
     procedure axi_write(
-      address : in std_logic_vector(9 downto 0);
-      data : in std_logic_vector(31 downto 0)
+      address : in std_logic_vector(AXI_ADDR_WIDTH-1 downto 0);
+      data : in std_logic_vector(AXI_DATA_WIDTH-1 downto 0)
     ) is begin
       awaddr  <= address;
       awvalid <= '1';
@@ -172,7 +174,7 @@ begin
     end procedure;
     
     procedure axi_read(
-      address : in std_logic_vector(9 downto 0)
+      address : in std_logic_vector(AXI_ADDR_WIDTH-1 downto 0)
     ) is begin
       araddr  <= address;
       arvalid <= '1';
@@ -189,51 +191,57 @@ begin
   begin
     -- Reset
     rst      <= '1';
-    awaddr  <= "0000000000";
+    awaddr  <= "000" & x"0000000";
     awvalid <= '0';
     wdata   <= x"00000000";
     wstrb   <= "0000";
     wvalid  <= '0';
     bready  <= '0';
-    araddr  <= "0000000000";
+    araddr  <= "000" & x"0000000";
     arvalid <= '0';
     rready  <= '0';
     wait for clk_period2;
     rst     <= '0';
     wait for clk_period2;
+
+    wait for clk_period * 1024;
     
     -- Write to register 0
-    axi_write("0000000000", x"00000018");
+    axi_write("000" & x"0000000", x"00000018");
     -- Read from register 0
-    axi_read("0000000000");
+    axi_read("000" & x"0000000");
     -- Write to note 69 (A4) reg
-    axi_write("0100010100", x"0000007F");
+    axi_write("000" & x"0000114", x"0000007F");
     -- Write to note 80 reg
     --axi_write("0100100000", x"0000FFF0");
     -- Write to note 127 reg
-    axi_write("0111111100", x"000000A5");
+    axi_write("000" & x"00001FC", x"000000A5");
     -- Write to output amplitude register
-    axi_write("1000100000", x"0000000A");
-    axi_write("1000100100", x"0000003F");
+    axi_write("000" & x"0000220", x"0000000A");
+    axi_write("000" & x"0000224", x"0000003F");
     -- Write to pulse reg
-    axi_write("1000000000", x"00004000");
-    axi_write("1000000100", x"0000000F");
+    axi_write("000" & x"0000200", x"00004000");
+    axi_write("000" & x"0000204", x"0000000F");
     -- Write to ramp reg
-    axi_write("1000001000", x"00000000");
+    axi_write("000" & x"0000208", x"00000000");
     -- Write to saw reg
-    axi_write("1000001100", x"00000000");
+    axi_write("000" & x"000020C", x"00000000");
     -- Write to tri reg
-    axi_write("1000010000", x"00000000");
+    axi_write("000" & x"0000210", x"00000000");
     -- Write to sin reg
-    axi_write("1000010100", x"0000000F");
+    axi_write("000" & x"0000214", x"0000000F");
     -- Write to wrapback reg
-    axi_write("1111111100", x"ABCD1234");
+    axi_write("000" & x"00003FC", x"ABCD1234");
     -- Read from wrapback reg
-    axi_read("1111111100");
+    axi_read("000" & x"00003FC");
     -- Read from rev reg
-    axi_read("1111100000");
+    axi_read("000" & x"00003E0");
     -- Read from date reg
-    axi_read("1111100100");
+    axi_read("000" & x"00003E4");
+    -- Read from phase increment table note 0
+    axi_read("000" & x"0000400");
+    -- Read from phase increment table note 5
+    axi_read("000" & x"0000414");
     
     -- End Simulation
     wait for clk_period2;
