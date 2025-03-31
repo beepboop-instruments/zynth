@@ -146,12 +146,10 @@ end top;
       generic (
         -- AXI parameters
         C_S_AXI_DATA_WIDTH  : integer  := 32;
-        C_S_AXI_ADDR_WIDTH  : integer  := 10;
+        C_S_AXI_ADDR_WIDTH  : integer  := 31;
         -- waveform parameters
         DATA_WIDTH     : natural := WIDTH_WAVE_DATA;
-        OUT_DATA_WIDTH : natural := WIDTH_WAVE_DATA+8;
-        -- clock frequency
-        CLK_MHZ        : natural := 100
+        OUT_DATA_WIDTH : natural := WIDTH_WAVE_DATA+8
       );
       port (
         -- clock and reset
@@ -364,9 +362,7 @@ end top;
       C_S_AXI_ADDR_WIDTH => 31,
       -- waveform parameters
       DATA_WIDTH     => WIDTH_WAVE_DATA,
-      OUT_DATA_WIDTH => WIDTH_WAVE_DATA+8,
-      -- clock frequency
-      CLK_MHZ        => 100
+      OUT_DATA_WIDTH => WIDTH_WAVE_DATA+8
     )
     port map (
       -- AXI control interface

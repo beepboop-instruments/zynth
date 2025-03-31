@@ -17,22 +17,24 @@ library ieee;
 
 library xil_defaultlib;
   use xil_defaultlib.synth_pkg.all;
+  use xil_defaultlib.music_note_pkg.all;
 
 entity synth_axi_ctrl is
   generic (
     -- Width of S_AXI data bus
     C_S_AXI_DATA_WIDTH : integer  := 32;
     -- Width of S_AXI address bus
-    C_S_AXI_ADDR_WIDTH : integer  := 10
+    C_S_AXI_ADDR_WIDTH : integer  := 31
   );
   port (
     -- Synth controls
-    note_amps   : out t_note_amp;
-    wfrm_amps   : out t_wfrm_amp;
-    wfrm_phs    : out t_wfrm_ph;
-    out_amp     : out unsigned(WIDTH_OUT_GAIN-1 downto 0);
-    out_shift   : out unsigned(WIDTH_OUT_SHIFT-1 downto 0);
-    pulse_width : out unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
+    note_amps    : out t_note_amp;
+    ph_inc_table : out t_ph_inc_lut;
+    wfrm_amps    : out t_wfrm_amp;
+    wfrm_phs     : out t_wfrm_ph;
+    out_amp      : out unsigned(WIDTH_OUT_GAIN-1 downto 0);
+    out_shift    : out unsigned(WIDTH_OUT_SHIFT-1 downto 0);
+    pulse_width  : out unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
 
     -- Global Clock Signal
     S_AXI_ACLK  : in std_logic;
@@ -112,10 +114,13 @@ architecture arch_imp of synth_axi_ctrl is
 
   -- constants
   constant ADDR_LSB : integer := (C_S_AXI_DATA_WIDTH/32)+ 1;
-  constant OPT_MEM_ADDR_BITS : integer := 7;
+  constant OPT_MEM_ADDR_BITS : integer := 8;
 
   -- note amplitudes array
   signal note_amps_int : t_note_amp;
+
+  -- phase increment table array
+  signal ph_inc_table_int : t_ph_inc_lut;
 
   -- memory-mapped registers
   signal pulse_width_reg : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
@@ -145,7 +150,8 @@ architecture arch_imp of synth_axi_ctrl is
 
 begin
   -- output port assignements
-  note_amps <= note_amps_int;
+  note_amps    <= note_amps_int;
+  ph_inc_table <= ph_inc_table_int;
 
   wfrm_amps(I_PULSE) <= unsigned(pulse_reg(WIDTH_WAVE_GAIN-1 downto 0));
   wfrm_amps(I_RAMP)  <= unsigned(ramp_reg(WIDTH_WAVE_GAIN-1 downto 0));
@@ -256,28 +262,30 @@ begin
   begin
     if rising_edge(S_AXI_ACLK) then 
       if S_AXI_ARESETN = '0' then
-        pulse_reg     <= (others => '0');
-        ramp_reg      <= (others => '0');
-        saw_reg       <= (others => '0');
-        tri_reg       <= (others => '0');
-        sin_reg       <= (others => '0');
-        wrapback_reg  <= (others => '0');
-        note_amps_int <= (others => (others => '0'));
+        pulse_reg          <= (others => '0');
+        ramp_reg           <= (others => '0');
+        saw_reg            <= (others => '0');
+        tri_reg            <= (others => '0');
+        sin_reg            <= (others => '0');
+        wrapback_reg       <= (others => '0');
+        note_amps_int      <= (others => (others => '0'));
+        ph_inc_table_int   <= ph_inc_lut;
       else
         if (S_AXI_WVALID = '1') then
-          case(mem_logic(mem_logic'high)) is
+          case(mem_logic(mem_logic'high downto mem_logic'high-1)) is
 
-            when '0' =>
+            when "00" =>
               -- Registers 127 to 0 hold note information.
               for byte_index in 0 to (C_S_AXI_ADDR_WIDTH/8-1) loop
                 if (S_AXI_WSTRB(0) = '1') then
                   -- Respective byte enables are asserted as per write strobes.
-                  note_amps_int(to_integer(unsigned(mem_logic(ADDR_LSB+OPT_MEM_ADDR_BITS-1 downto ADDR_LSB)))) <= unsigned(S_AXI_WDATA(WIDTH_NOTE_GAIN-1 downto 0));
+                  note_amps_int(to_integer(unsigned(mem_logic(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB)))) <= unsigned(S_AXI_WDATA(WIDTH_NOTE_GAIN-1 downto 0));
                 end if;
               end loop;
 
-            when '1' =>
-              case(mem_logic(mem_logic'high-1 downto ADDR_LSB)) is
+            when "01" =>
+              -- Registers for synth settings
+              case(mem_logic(mem_logic'high-2 downto ADDR_LSB)) is
                 when OFFSET_PULSE_WIDTH_REG =>
                 for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
                   if ( S_AXI_WSTRB(byte_index) = '1' ) then
@@ -371,9 +379,14 @@ begin
                   wrapback_reg    <= wrapback_reg;
               
               end case;
+            
+            when "10" =>
+            -- Registers for note frequency words
+            ph_inc_table_int(to_integer(unsigned(mem_logic(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB)))) <= unsigned(S_AXI_WDATA);
 
             when others =>
-            note_amps_int <= note_amps_int;
+            note_amps_int    <= note_amps_int;
+            ph_inc_table_int <= ph_inc_table_int;
 
           end case;
         end if;
@@ -425,18 +438,25 @@ begin
     end process;             
 
   -- Implement memory mapped register select and read logic generation
-  S_AXI_RDATA <= x"000000" & '0' & std_logic_vector(note_amps_int(to_integer(unsigned(axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-1 downto ADDR_LSB))))) when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS) = '0' ) else
-    pulse_width_reg  when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-1 downto ADDR_LSB) = OFFSET_PULSE_WIDTH_REG  ) else 
-    pulse_reg        when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-1 downto ADDR_LSB) = OFFSET_PULSE_REG        ) else 
-    ramp_reg         when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-1 downto ADDR_LSB) = OFFSET_RAMP_REG         ) else 
-    saw_reg          when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-1 downto ADDR_LSB) = OFFSET_SAW_REG          ) else 
-    tri_reg          when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-1 downto ADDR_LSB) = OFFSET_TRI_REG          ) else 
-    sin_reg          when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-1 downto ADDR_LSB) = OFFSET_SINE_REG         ) else 
-    out_amp_reg      when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-1 downto ADDR_LSB) = OFFSET_GAIN_SCALE_REG   ) else
-    out_shift_reg    when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-1 downto ADDR_LSB) = OFFSET_GAIN_SHIFT_REG   ) else
-    SYNTH_ENG_REV    when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-1 downto ADDR_LSB) = OFFSET_REV_REG          ) else 
-    SYNTH_ENG_DATE   when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-1 downto ADDR_LSB) = OFFSET_DATE_REG         ) else 
-    wrapback_reg     when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-1 downto ADDR_LSB) = OFFSET_WRAPBACK_REG     ) else 
+  S_AXI_RDATA <= 
+    -- read note amplitude
+    x"000000" & '0' & std_logic_vector(note_amps_int(to_integer(unsigned(axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB))))) when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS downto ADDR_LSB+OPT_MEM_ADDR_BITS-1) = "00" ) else
+    -- read from note phase increment table
+    std_logic_vector(ph_inc_table_int(to_integer(unsigned(axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB))))) when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS downto ADDR_LSB+OPT_MEM_ADDR_BITS-1) = "10" ) else
+    -- read from synth settings
+    pulse_width_reg  when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_PULSE_WIDTH_REG  ) else 
+    pulse_reg        when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_PULSE_REG        ) else 
+    ramp_reg         when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_RAMP_REG         ) else 
+    saw_reg          when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_SAW_REG          ) else 
+    tri_reg          when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_TRI_REG          ) else 
+    sin_reg          when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_SINE_REG         ) else 
+    out_amp_reg      when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_GAIN_SCALE_REG   ) else
+    out_shift_reg    when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_GAIN_SHIFT_REG   ) else
+    -- read from info registers
+    SYNTH_ENG_REV    when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_REV_REG          ) else 
+    SYNTH_ENG_DATE   when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_DATE_REG         ) else 
+    wrapback_reg     when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_WRAPBACK_REG     ) else 
+    -- default
     (others => '0');
 
 end arch_imp;

@@ -41,6 +41,7 @@ typedef uint8_t wave_type;
 #define OFFSET_REV_REG         0x3E0
 #define OFFSET_DATE_REG        0x3E4
 #define OFFSET_WRAPBACK_REG    0x3FC
+#define OFFSET_PITCH_REG       0x400
 
 /***************************************************************************
 * Helper macros
@@ -51,6 +52,7 @@ typedef uint8_t wave_type;
 
 #define playNote(note, amp)         synthWrite(note*4, amp)
 #define stopNote(note)              synthWrite(note*4, 0)
+#define setPitch(note, pitch)       synthWrite(OFFSET_PITCH_REG + note*4, pitch)
 #define setPulseWidth(width)        synthWrite(OFFSET_PULSE_WIDTH_REG, width)
 #define setWaveAmp(wave_form, amp)  synthWrite(0x200 + 4*wave_form, amp)
 #define setWavePh(wave_form, phase) synthWrite(0x200 + 4*wave_form, phase)

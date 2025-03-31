@@ -22,6 +22,7 @@ entity phase_accumulator is
   port (
     clk       : in  std_logic;
     rst       : in  std_logic;
+    phase_in  : in  unsigned(PHASE_WIDTH-1 downto 0); -- Phase input
     increment : in  unsigned(PHASE_WIDTH-1 downto 0); -- Phase increment
     phase     : out unsigned(PHASE_WIDTH-1 downto 0)  -- Phase output
   );
@@ -36,7 +37,7 @@ begin
       if rst = '1' then
         phase_reg <= (others => '0');
       else
-        phase_reg <= phase_reg + increment;
+        phase_reg <= phase_in + increment;
       end if;
     end if;
   end process;

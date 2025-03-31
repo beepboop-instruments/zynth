@@ -23,12 +23,10 @@ entity synth_engine is
   generic (
     -- AXI parameters
     C_S_AXI_DATA_WIDTH  : integer  := 32;
-    C_S_AXI_ADDR_WIDTH  : integer  := 10;
+    C_S_AXI_ADDR_WIDTH  : integer  := 31;
     -- waveform parameters
     DATA_WIDTH     : natural := WIDTH_WAVE_DATA;
-    OUT_DATA_WIDTH : natural := WIDTH_WAVE_DATA+8;
-    -- clock frequency
-    CLK_MHZ        : natural := 100
+    OUT_DATA_WIDTH : natural := WIDTH_WAVE_DATA+8
   );
   port (
     -- clock and reset
@@ -67,16 +65,17 @@ architecture struct_synth_engine of synth_engine is
     generic (
       -- AXI parameters
       C_S_AXI_DATA_WIDTH  : integer  := 32;
-      C_S_AXI_ADDR_WIDTH  : integer  := 10
+      C_S_AXI_ADDR_WIDTH  : integer  := 31
     );
     port (
       -- synth controls out
-      note_amps : out t_note_amp;
-      wfrm_amps : out t_wfrm_amp;
-      wfrm_phs  : out t_wfrm_ph;
-      out_amp   : out unsigned(WIDTH_OUT_GAIN-1 downto 0);
-      out_shift : out unsigned(WIDTH_OUT_SHIFT-1 downto 0);
-      pulse_width : out unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
+      note_amps    : out t_note_amp;
+      ph_inc_table : out t_ph_inc_lut;
+      wfrm_amps    : out t_wfrm_amp;
+      wfrm_phs     : out t_wfrm_ph;
+      out_amp      : out unsigned(WIDTH_OUT_GAIN-1 downto 0);
+      out_shift    : out unsigned(WIDTH_OUT_SHIFT-1 downto 0);
+      pulse_width  : out unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
 
       -- AXI control interface
       s_axi_aclk     : in  std_logic;
@@ -146,10 +145,11 @@ architecture struct_synth_engine of synth_engine is
       PHASE_WIDTH : integer := 8 -- 8-bit phase index
     );
     port (
-      clk       : in  std_logic;
-      rst       : in  std_logic;
-      increment : in  unsigned(PHASE_WIDTH-1 downto 0); -- Phase increment
-      phase     : out unsigned(PHASE_WIDTH-1 downto 0)  -- Phase output
+      clk         : in  std_logic;
+      rst         : in  std_logic;
+      phase_in    : in  unsigned(PHASE_WIDTH-1 downto 0); -- Phase input
+      increment   : in  unsigned(PHASE_WIDTH-1 downto 0); -- Phase increment
+      phase       : out unsigned(PHASE_WIDTH-1 downto 0)  -- Phase output
     );
   end component;
 
@@ -195,9 +195,14 @@ architecture struct_synth_engine of synth_engine is
   signal wfrm_mixes_q : t_wave_data;
   signal wfrm_mix_d   : signed(DATA_WIDTH-1 downto 0);
 
-  signal phases           : t_ph_inc;
-  signal note_amps        : t_note_amp;
+  signal phase_d   : unsigned(WIDTH_PH_DATA-1 downto 0);
+  signal phases_q  : t_ph_inc;
+
+  signal note_amp_gated_d : unsigned(WIDTH_NOTE_GAIN-1 downto 0);
   signal note_amps_gated  : t_note_amp;
+
+  signal ph_inc_table     : t_ph_inc_lut;
+  signal note_amps        : t_note_amp;
   signal wfrm_amps        : t_wfrm_amp;
   signal wfrm_phs         : t_wfrm_ph;
   
@@ -209,10 +214,7 @@ architecture struct_synth_engine of synth_engine is
   signal notes_sum  : signed(OUT_DATA_WIDTH-1 downto 0);
   signal audio_out_mult : signed(OUT_DATA_WIDTH-1 downto 0);
 
-  signal note_index, note_index_q : integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
-
-  signal mux_strobe : std_logic;
-
+  signal note_index, note_index_q, note_index_q0, note_index_q1 : integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
 
 begin
 
@@ -240,12 +242,13 @@ begin
     )
     port map (
       -- synth controls out
-      note_amps   => note_amps,
-      wfrm_amps   => wfrm_amps,
-      wfrm_phs    => wfrm_phs,
-      out_amp     => out_amp,
-      out_shift   => out_shift,
-      pulse_width => pulse_width,
+      note_amps    => note_amps,
+      ph_inc_table => ph_inc_table,
+      wfrm_amps    => wfrm_amps,
+      wfrm_phs     => wfrm_phs,
+      out_amp      => out_amp,
+      out_shift    => out_shift,
+      pulse_width  => pulse_width,
 
       -- AXI control interface
       s_axi_aclk    => clk,
@@ -274,45 +277,46 @@ begin
   s_counter_index: process(clk, rst)
     begin
       if(rst = '1') then
-        wfrm_mixes_q  <= (others => (others => '0'));
-        note_index   <= I_LOWEST_NOTE;
-        mux_strobe   <= '0';
+        -- reset registes
+        wfrm_mixes_q    <= (others => (others => '0'));
+        note_index      <= I_LOWEST_NOTE;
+        note_index_q0   <= I_LOWEST_NOTE;
+        note_index_q1   <= I_LOWEST_NOTE;
+        phases_q        <= (others => (others => '0'));
+        note_amps_gated <= (others => (others => '0'));
       elsif (rising_edge(clk)) then
+        -- clock registers
+        note_index_q0 <= note_index;
+        note_index_q1 <= note_index_q0;
         wfrm_mixes_q(note_index_q) <= wfrm_mix_d;
-        mux_strobe   <= '0';
+        phases_q(note_index_q1) <= phase_d;
+
+        -- change amplitude at the start of a cycle
+        if (phases_q(note_index_q0) < ph_inc_table(note_index_q0)) then
+          note_amps_gated(note_index_q0) <= note_amps(note_index_q0);
+        end if;
+
+        -- cycle through each note
         if note_index < I_HIGHEST_NOTE then
-          note_index   <= note_index + 1;
+          note_index <= note_index + 1;
         else
           note_index <= I_LOWEST_NOTE;
-          mux_strobe <= '1';
         end if;
+
       end if;
     end process;
-
-  -- Instantiate 128 phase accumulators and waveform generators
-  gen_accumulators: for i in I_LOWEST_NOTE to I_HIGHEST_NOTE generate
-
-    u_phase_gen: phase_accumulator
-      generic map (
-        PHASE_WIDTH => WIDTH_PH_DATA
-      )
-      port map (
-        clk       => mux_strobe,
-        rst       => rst,
-        increment => ph_inc_lut(i),
-        phase     => phases(i)
-      );
-
-    u_amp_gate: amp_gate
-      port map (
-        clk            => clk,
-        rst            => rst,
-        note_amp       => note_amps(i),
-        phase          => phases(i),
-        note_amp_gated => note_amps_gated(i)
-      );
-
-    end generate;
+  
+  u_phase_gen: phase_accumulator
+  generic map (
+    PHASE_WIDTH => WIDTH_PH_DATA
+  )
+  port map (
+    clk         => clk,
+    rst         => rst,
+    phase_in    => phases_q(note_index_q0),
+    increment   => ph_inc_table(note_index_q0),
+    phase       => phase_d
+  );
   
   u_waveform_gen: waveform_generator
     generic map (
@@ -321,9 +325,9 @@ begin
     )
     port map (      
       clk      => clk,
-      phase    => phases(note_index)(31 downto 16),
+      phase    => phases_q(note_index_q0)(31 downto 16),
       -- note indexes
-      index_in  => note_index,
+      index_in  => note_index_q0,
       index_out => note_index_q,
       -- pulse width modulation
       pulse_amp => wfrm_amps(I_PULSE),
@@ -347,7 +351,7 @@ begin
       sine_ph  => wfrm_phs(I_SINE),
       sine     => open,
       -- waveform mixed output
-      mix_amp  => note_amps_gated(note_index),
+      mix_amp  => note_amps_gated(note_index_q0),
       mix_out  => wfrm_mix_d
     );
 
