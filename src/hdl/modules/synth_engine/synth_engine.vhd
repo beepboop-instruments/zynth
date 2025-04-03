@@ -102,67 +102,71 @@ architecture struct_synth_engine of synth_engine is
     );
   end component synth_axi_ctrl;
 
-  component waveform_generator is
+  component phase_to_wave is
     generic (
-      DATA_WIDTH : natural := 16;
-      SIN_LUT_PH : natural := 12
+      PHASE_WIDTH     : integer := WIDTH_PH_DATA;
+      NOTE_GAIN_WIDTH : integer := WIDTH_NOTE_GAIN;
+      DATA_WIDTH      : natural := WIDTH_WAVE_DATA;
+      SIN_LUT_PH      : natural := 12
     );
     port (
-      clk       : in  std_logic;
-      phase     : in  unsigned(DATA_WIDTH-1 downto 0);
-      -- note indexes
-      index_in  : in  integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
-      index_out : out integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
-      -- pulse width modulation
-      pulse_amp : in  unsigned(WIDTH_WAVE_GAIN-1 downto 0);
-      pulse_ph  : in  unsigned(DATA_WIDTH-1 downto 0);
-      duty      : in  unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
-      pulse     : out signed(DATA_WIDTH-1 downto 0);
-      -- ramp
-      ramp_amp  : in  unsigned(WIDTH_WAVE_GAIN-1 downto 0);
-      ramp_ph   : in  unsigned(DATA_WIDTH-1 downto 0);
-      ramp      : out signed(DATA_WIDTH-1 downto 0);
-      -- saw
-      saw_amp   : in  unsigned(WIDTH_WAVE_GAIN-1 downto 0);
-      saw_ph    : in  unsigned(DATA_WIDTH-1 downto 0);
-      saw       : out signed(DATA_WIDTH-1 downto 0);
-      -- triangle
-      tri_amp   : in  unsigned(WIDTH_WAVE_GAIN-1 downto 0);
-      tri_ph    : in  unsigned(DATA_WIDTH-1 downto 0);
-      tri       : out signed(DATA_WIDTH-1 downto 0);
-      -- sine
-      sine_amp  : in  unsigned(WIDTH_WAVE_GAIN-1 downto 0);
-      sine_ph   : in  unsigned(DATA_WIDTH-1 downto 0);
-      sine      : out signed(DATA_WIDTH-1 downto 0);
-      -- mixed output
-      mix_amp   : in  unsigned(WIDTH_NOTE_GAIN-1 downto 0);
-      mix_out   : out signed(DATA_WIDTH-1 downto 0)
+      clk             : in  std_logic;
+      rst             : in  std_logic;
+      -- synth controls
+      wfrm_amps       : in  t_wfrm_amp;
+      wfrm_phs        : in  t_wfrm_ph;
+      pulse_width     : in  unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
+      -- pipeline in
+      note_index_in   : in  integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
+      phase_in        : in  unsigned(PHASE_WIDTH-1 downto 0);
+      note_amp_in     : in  unsigned(NOTE_GAIN_WIDTH-1 downto 0);
+      cycle_start_in  : in  std_logic;
+      -- pipeline out
+      note_index_out  : out integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
+      note_out        : out signed(DATA_WIDTH-1 downto 0);
+      note_amp_out    : out unsigned(NOTE_GAIN_WIDTH-1 downto 0);
+      cycle_start_out : out std_logic
     );
-  end component waveform_generator;
+  end component;
 
   component phase_accumulator is
     generic (
-      PHASE_WIDTH : integer := 8 -- 8-bit phase index
+      PHASE_WIDTH     : integer := WIDTH_PH_DATA;
+      NOTE_GAIN_WIDTH : integer := WIDTH_NOTE_GAIN
     );
     port (
-      clk         : in  std_logic;
-      rst         : in  std_logic;
-      phase_in    : in  unsigned(PHASE_WIDTH-1 downto 0); -- Phase input
-      increment   : in  unsigned(PHASE_WIDTH-1 downto 0); -- Phase increment
-      phase       : out unsigned(PHASE_WIDTH-1 downto 0)  -- Phase output
+      clk             : in  std_logic;
+      rst             : in  std_logic;
+      phase_incs      : in  t_ph_inc_lut;
+      note_amps       : in  t_note_amp;
+      note_index_out  : out integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
+      phase_out       : out unsigned(PHASE_WIDTH-1 downto 0);
+      note_amp_out    : out unsigned(NOTE_GAIN_WIDTH-1 downto 0);
+      cycle_start_out : out std_logic
     );
   end component;
 
-  component amp_gate is
+  component envelope_scale is
+    generic (
+      NOTE_GAIN_WIDTH : integer := WIDTH_NOTE_GAIN;
+      DATA_WIDTH      : natural := WIDTH_WAVE_DATA
+    );
     port (
-      clk            : in std_logic;
-      rst            : in std_logic;
-      note_amp       : in  unsigned(WIDTH_NOTE_GAIN-1 downto 0);
-      phase          : in  unsigned(WIDTH_PH_DATA-1 downto 0);
-      note_amp_gated : out unsigned(WIDTH_NOTE_GAIN-1 downto 0)
+      clk             : in  std_logic;
+      rst             : in  std_logic;
+      -- synth controls
+      -- adsr_settings
+      -- pipeline in
+      note_index_in   : in  integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
+      note_amp_in     : in  unsigned(NOTE_GAIN_WIDTH-1 downto 0);
+      note_in         : in  signed(DATA_WIDTH-1 downto 0);
+      cycle_start_in  : in  std_logic;
+      -- pipeline out
+      note_index_out  : out integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
+      note_out        : out signed(DATA_WIDTH-1 downto 0)
     );
   end component;
-  
+
   component synth_note_mixer is
     generic (
       I_LOW       : integer := 0;  -- lowest index in array
@@ -189,17 +193,15 @@ architecture struct_synth_engine of synth_engine is
   end component scaler;
 
   signal rst_n      : std_logic;
-  signal clk1       : std_logic;
-  signal rst1       : std_logic;
 
   signal wfrm_mixes_q : t_wave_data;
-  signal wfrm_mix_d   : signed(DATA_WIDTH-1 downto 0);
+  signal wfrm_mix_q, wfrm_mix_q2   : signed(DATA_WIDTH-1 downto 0);
 
   signal phase_d   : unsigned(WIDTH_PH_DATA-1 downto 0);
-  signal phases_q  : t_ph_inc;
 
-  signal note_amp_gated_d : unsigned(WIDTH_NOTE_GAIN-1 downto 0);
-  signal note_amps_gated  : t_note_amp;
+  signal note_amp_q, note_amp_q2 : unsigned(WIDTH_NOTE_GAIN-1 downto 0);
+
+  signal cycle_start_q, cycle_start_q2 : std_logic;
 
   signal ph_inc_table     : t_ph_inc_lut;
   signal note_amps        : t_note_amp;
@@ -214,7 +216,7 @@ architecture struct_synth_engine of synth_engine is
   signal notes_sum  : signed(OUT_DATA_WIDTH-1 downto 0);
   signal audio_out_mult : signed(OUT_DATA_WIDTH-1 downto 0);
 
-  signal note_index, note_index_q, note_index_q0, note_index_q1 : integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
+  signal note_index_q, note_index_q1, note_index_q2 : integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
 
 begin
 
@@ -279,81 +281,74 @@ begin
       if(rst = '1') then
         -- reset registes
         wfrm_mixes_q    <= (others => (others => '0'));
-        note_index      <= I_LOWEST_NOTE;
-        note_index_q0   <= I_LOWEST_NOTE;
-        note_index_q1   <= I_LOWEST_NOTE;
-        phases_q        <= (others => (others => '0'));
-        note_amps_gated <= (others => (others => '0'));
       elsif (rising_edge(clk)) then
         -- clock registers
-        note_index_q0 <= note_index;
-        note_index_q1 <= note_index_q0;
-        wfrm_mixes_q(note_index_q) <= wfrm_mix_d;
-        phases_q(note_index_q1) <= phase_d;
-
-        -- change amplitude at the start of a cycle
-        if (phases_q(note_index_q0) < ph_inc_table(note_index_q0)) then
-          note_amps_gated(note_index_q0) <= note_amps(note_index_q0);
-        end if;
-
-        -- cycle through each note
-        if note_index < I_HIGHEST_NOTE then
-          note_index <= note_index + 1;
-        else
-          note_index <= I_LOWEST_NOTE;
-        end if;
+        wfrm_mixes_q(note_index_q1) <= wfrm_mix_q2;
 
       end if;
     end process;
   
   u_phase_gen: phase_accumulator
   generic map (
-    PHASE_WIDTH => WIDTH_PH_DATA
+    PHASE_WIDTH     => WIDTH_PH_DATA,
+    NOTE_GAIN_WIDTH => WIDTH_NOTE_GAIN
   )
   port map (
-    clk         => clk,
-    rst         => rst,
-    phase_in    => phases_q(note_index_q0),
-    increment   => ph_inc_table(note_index_q0),
-    phase       => phase_d
+    clk             => clk,
+    rst             => rst,
+    phase_incs      => ph_inc_table,
+    note_amps       => note_amps,
+    note_index_out  => note_index_q,
+    phase_out       => phase_d,
+    note_amp_out    => note_amp_q,
+    cycle_start_out => cycle_start_q
   );
   
-  u_waveform_gen: waveform_generator
+  u_phase_to_wave: phase_to_wave
     generic map (
-      DATA_WIDTH => DATA_WIDTH,
-      SIN_LUT_PH => 12
+      PHASE_WIDTH     => WIDTH_PH_DATA,
+      NOTE_GAIN_WIDTH => WIDTH_NOTE_GAIN,
+      DATA_WIDTH      => WIDTH_WAVE_DATA,
+      SIN_LUT_PH      => 12
     )
-    port map (      
-      clk      => clk,
-      phase    => phases_q(note_index_q0)(31 downto 16),
-      -- note indexes
-      index_in  => note_index_q0,
-      index_out => note_index_q,
-      -- pulse width modulation
-      pulse_amp => wfrm_amps(I_PULSE),
-      pulse_ph  => wfrm_phs(I_PULSE),
-      duty      => pulse_width,
-      pulse     => open,
-      -- ramp
-      ramp_amp => wfrm_amps(I_RAMP),
-      ramp_ph  => wfrm_phs(I_RAMP),
-      ramp     => open,
-      -- saw
-      saw_amp  => wfrm_amps(I_SAW),
-      saw_ph   => wfrm_phs(I_SAW),
-      saw      => open,
-      -- triangle
-      tri_amp  => wfrm_amps(I_TRI),
-      tri_ph   => wfrm_phs(I_TRI),
-      tri      => open,
-      -- sine
-      sine_amp => wfrm_amps(I_SINE),
-      sine_ph  => wfrm_phs(I_SINE),
-      sine     => open,
-      -- waveform mixed output
-      mix_amp  => note_amps_gated(note_index_q0),
-      mix_out  => wfrm_mix_d
+    port map (
+      clk             => clk,
+      rst             => rst,
+      -- synth controls
+      wfrm_amps       => wfrm_amps,
+      wfrm_phs        => wfrm_phs,
+      pulse_width     => pulse_width,
+      -- pipeline in
+      note_index_in   => note_index_q,
+      phase_in        => phase_d,
+      note_amp_in     => note_amp_q,
+      cycle_start_in  => cycle_start_q,
+      -- pipeline out
+      note_index_out  => note_index_q1,
+      note_out        => wfrm_mix_q,
+      note_amp_out    => note_amp_q2,
+      cycle_start_out => cycle_start_q2
     );
+
+    u_envelope_scale: envelope_scale
+      generic map(
+        NOTE_GAIN_WIDTH => WIDTH_NOTE_GAIN,
+        DATA_WIDTH      => WIDTH_WAVE_DATA
+      )
+      port map (
+        clk             => clk,
+        rst             => rst,
+        -- synth controls
+        -- adsr_settings
+        -- pipeline in
+        note_index_in   => note_index_q1,
+        note_amp_in     => note_amp_q2,
+        note_in         => wfrm_mix_q,
+        cycle_start_in  => cycle_start_q2,
+        -- pipeline out
+        note_index_out  => note_index_q2,
+        note_out        => wfrm_mix_q2
+      );
 
   -- mix all notes together for polyphonic
   u_sum_mixes: synth_note_mixer

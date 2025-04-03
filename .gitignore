@@ -1,3 +1,7 @@
 # Ignore DVT VSCode extension files
 .dvt/
 dvt*
+
+# Ignore Vivado stuff
+*xgui/
+*component.xml
