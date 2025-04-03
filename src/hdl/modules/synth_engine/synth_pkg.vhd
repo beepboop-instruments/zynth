@@ -53,7 +53,7 @@ package synth_pkg is
   constant I_SINE  : natural := 4;
 
   -- array data types
-  type t_ph_inc_lut  is array (0 to 127) of unsigned(WIDTH_PH_DATA-1 downto 0);
+  type t_ph_inc_lut  is array (116 to 127) of unsigned(WIDTH_PH_DATA-1 downto 0);
   type t_ph_inc      is array (I_LOWEST_NOTE to I_HIGHEST_NOTE) of unsigned(WIDTH_PH_DATA-1 downto 0);
   type t_wave_data   is array (I_LOWEST_NOTE to I_HIGHEST_NOTE) of signed(WIDTH_WAVE_DATA-1 downto 0);
   type t_note_amp    is array (0 to 127) of unsigned(WIDTH_NOTE_GAIN-1 downto 0);

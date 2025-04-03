@@ -238,10 +238,10 @@ begin
     axi_read("000" & x"00003E0");
     -- Read from date reg
     axi_read("000" & x"00003E4");
-    -- Read from phase increment table note 0
-    axi_read("000" & x"0000400");
-    -- Read from phase increment table note 5
-    axi_read("000" & x"0000414");
+    -- Read from phase increment table note 117
+    axi_read("000" & x"00005D4");
+    -- Read from phase increment table note 119
+    axi_read("000" & x"00005DC");
     
     -- End Simulation
     wait for clk_period2;
