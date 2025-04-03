@@ -29,8 +29,10 @@ entity phase_accumulator is
   port (
     clk             : in  std_logic;
     rst             : in  std_logic;
+    -- synth controls
     phase_incs      : in  t_ph_inc_lut;
     note_amps       : in  t_note_amp;
+    -- pipeline out
     note_index_out  : out integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
     phase_out       : out unsigned(PHASE_WIDTH-1 downto 0);
     note_amp_out    : out unsigned(NOTE_GAIN_WIDTH-1 downto 0);
