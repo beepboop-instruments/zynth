@@ -34,6 +34,8 @@ entity synth_engine is
     rst           : in std_logic;
 
     -- AXI control interface
+    s_axi_aclk    : in  std_logic;
+    s_axi_aresetn : in  std_logic;
     s_axi_awaddr  : in  std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
     s_axi_awprot  : in  std_logic_vector(2 downto 0);
     s_axi_awvalid : in  std_logic;
@@ -68,6 +70,9 @@ architecture struct_synth_engine of synth_engine is
       C_S_AXI_ADDR_WIDTH  : integer  := 31
     );
     port (
+      -- user clock domain
+      clk          : in  std_logic;
+      rst          : in  std_logic;
       -- synth controls out
       note_amps    : out t_note_amp;
       ph_inc_table : out t_ph_inc_lut;
@@ -76,6 +81,13 @@ architecture struct_synth_engine of synth_engine is
       out_amp      : out unsigned(WIDTH_OUT_GAIN-1 downto 0);
       out_shift    : out unsigned(WIDTH_OUT_SHIFT-1 downto 0);
       pulse_width  : out unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
+      attack_length   : out unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+      decay_length    : out unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+      sustain_amt     : out unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+      release_length  : out unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+      attack_steps    : out t_adsr;
+      decay_steps     : out t_adsr;
+      release_steps   : out t_adsr;
 
       -- AXI control interface
       s_axi_aclk     : in  std_logic;
@@ -151,13 +163,20 @@ architecture struct_synth_engine of synth_engine is
   component envelope_scale is
     generic (
       NOTE_GAIN_WIDTH : integer := WIDTH_NOTE_GAIN;
-      DATA_WIDTH      : natural := WIDTH_WAVE_DATA
+      DATA_WIDTH      : natural := WIDTH_WAVE_DATA;
+      COUNT_WIDTH     : natural := WIDTH_ADSR_COUNT
     );
     port (
       clk             : in  std_logic;
       rst             : in  std_logic;
       -- synth controls
-      -- adsr_settings
+      attack_length   : in  unsigned(COUNT_WIDTH-1 downto 0);
+      decay_length    : in  unsigned(COUNT_WIDTH-1 downto 0);
+      sustain_amt     : in  unsigned(COUNT_WIDTH-1 downto 0);
+      release_length  : in  unsigned(COUNT_WIDTH-1 downto 0);
+      attack_steps    : in  t_adsr;
+      decay_steps     : in  t_adsr;
+      release_steps   : in  t_adsr;
       -- pipeline in
       note_index_in   : in  integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
       note_amp_in     : in  unsigned(NOTE_GAIN_WIDTH-1 downto 0);
@@ -213,13 +232,20 @@ architecture struct_synth_engine of synth_engine is
          cycle_start_q2 : std_logic;
 
   -- synth controller signals
-  signal ph_inc_table  : t_ph_inc_lut;
-  signal note_amps     : t_note_amp;
-  signal wfrm_amps     : t_wfrm_amp;
-  signal wfrm_phs      : t_wfrm_ph;
-  signal out_amp       : unsigned(WIDTH_OUT_GAIN-1 downto 0);
-  signal out_shift     : unsigned(WIDTH_OUT_SHIFT-1 downto 0);
-  signal pulse_width   : unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
+  signal ph_inc_table    : t_ph_inc_lut;
+  signal note_amps       : t_note_amp;
+  signal wfrm_amps       : t_wfrm_amp;
+  signal wfrm_phs        : t_wfrm_ph;
+  signal out_amp         : unsigned(WIDTH_OUT_GAIN-1 downto 0);
+  signal out_shift       : unsigned(WIDTH_OUT_SHIFT-1 downto 0);
+  signal pulse_width     : unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
+  signal attack_length   : unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+  signal decay_length    : unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+  signal sustain_amt     : unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+  signal release_length  : unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+  signal attack_steps    : t_adsr;
+  signal decay_steps     : t_adsr;
+  signal release_steps   : t_adsr;
 
 begin
 
@@ -233,18 +259,28 @@ begin
       C_S_AXI_ADDR_WIDTH => C_S_AXI_ADDR_WIDTH
     )
     port map (
+      -- user clock domain
+      clk             => clk,
+      rst             => rst,
       -- synth controls out
-      note_amps    => note_amps,
-      ph_inc_table => ph_inc_table,
-      wfrm_amps    => wfrm_amps,
-      wfrm_phs     => wfrm_phs,
-      out_amp      => out_amp,
-      out_shift    => out_shift,
-      pulse_width  => pulse_width,
+      note_amps       => note_amps,
+      ph_inc_table    => ph_inc_table,
+      wfrm_amps       => wfrm_amps,
+      wfrm_phs        => wfrm_phs,
+      out_amp         => out_amp,
+      out_shift       => out_shift,
+      pulse_width     => pulse_width,
+      attack_length   => attack_length,
+      decay_length    => decay_length,
+      sustain_amt     => sustain_amt,
+      release_length  => release_length,
+      attack_steps    => attack_steps,
+      decay_steps     => decay_steps,
+      release_steps   => release_steps,
 
       -- AXI control interface
-      s_axi_aclk    => clk,
-      s_axi_aresetn => rst_n,
+      s_axi_aclk    => s_axi_aclk,
+      s_axi_aresetn => s_axi_aresetn,
       s_axi_awaddr  => s_axi_awaddr,
       s_axi_awprot  => s_axi_awprot,
       s_axi_awvalid => s_axi_awvalid,
@@ -313,13 +349,20 @@ begin
   u_stage_2_envelope_scale: envelope_scale
     generic map(
       NOTE_GAIN_WIDTH => WIDTH_NOTE_GAIN,
-      DATA_WIDTH      => WIDTH_WAVE_DATA
+      DATA_WIDTH      => WIDTH_WAVE_DATA,
+      COUNT_WIDTH     => WIDTH_ADSR_COUNT
     )
     port map (
       clk             => clk,
       rst             => rst,
       -- synth controls
-      -- adsr_settings
+      attack_length   => attack_length,
+      decay_length    => decay_length,
+      sustain_amt     => sustain_amt,
+      release_length  => release_length,
+      attack_steps    => attack_steps,
+      decay_steps     => decay_steps,
+      release_steps   => release_steps,
       -- pipeline in
       note_index_in   => note_index_q2,
       note_amp_in     => note_amp_q2,

@@ -27,14 +27,24 @@ entity synth_axi_ctrl is
     C_S_AXI_ADDR_WIDTH : integer  := 31
   );
   port (
+    -- user clock domain
+    clk          : in  std_logic;
+    rst          : in  std_logic;
     -- Synth controls
-    note_amps    : out t_note_amp;
-    ph_inc_table : out t_ph_inc_lut;
-    wfrm_amps    : out t_wfrm_amp;
-    wfrm_phs     : out t_wfrm_ph;
-    out_amp      : out unsigned(WIDTH_OUT_GAIN-1 downto 0);
-    out_shift    : out unsigned(WIDTH_OUT_SHIFT-1 downto 0);
-    pulse_width  : out unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
+    note_amps       : out t_note_amp;
+    ph_inc_table    : out t_ph_inc_lut;
+    wfrm_amps       : out t_wfrm_amp;
+    wfrm_phs        : out t_wfrm_ph;
+    out_amp         : out unsigned(WIDTH_OUT_GAIN-1 downto 0);
+    out_shift       : out unsigned(WIDTH_OUT_SHIFT-1 downto 0);
+    pulse_width     : out unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
+    attack_length   : out unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+    decay_length    : out unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+    sustain_amt     : out unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+    release_length  : out unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+    attack_steps    : out t_adsr;
+    decay_steps     : out t_adsr;
+    release_steps   : out t_adsr;
 
     -- Global Clock Signal
     S_AXI_ACLK  : in std_logic;
@@ -101,6 +111,55 @@ end synth_axi_ctrl;
 
 architecture arch_imp of synth_axi_ctrl is
 
+  component axi_clock_converter
+    port (
+      s_axi_aclk    : in  std_logic;
+      s_axi_aresetn : in  std_logic;
+      s_axi_awaddr  : in  std_logic_vector(30 downto 0);
+      s_axi_awprot  : in  std_logic_vector(2 downto 0);
+      s_axi_awvalid : in  std_logic;
+      s_axi_awready : out std_logic;
+      s_axi_wdata   : in  std_logic_vector(31 downto 0);
+      s_axi_wstrb   : in  std_logic_vector(3 downto 0);
+      s_axi_wvalid  : in  std_logic;
+      s_axi_wready  : out std_logic;
+      s_axi_bresp   : out std_logic_vector(1 downto 0);
+      s_axi_bvalid  : out std_logic;
+      s_axi_bready  : in  std_logic;
+      s_axi_araddr  : in  std_logic_vector(30 downto 0);
+      s_axi_arprot  : in  std_logic_vector(2 downto 0);
+      s_axi_arvalid : in  std_logic;
+      s_axi_arready : out std_logic;
+      s_axi_rdata   : out std_logic_vector(31 downto 0);
+      s_axi_rresp   : out std_logic_vector(1 downto 0);
+      s_axi_rvalid  : out std_logic;
+      s_axi_rready  : in  std_logic;
+      m_axi_aclk    : in  std_logic;
+      m_axi_aresetn : in  std_logic;
+      m_axi_awaddr  : out std_logic_vector(30 downto 0);
+      m_axi_awprot  : out std_logic_vector(2 downto 0);
+      m_axi_awvalid : out std_logic;
+      m_axi_awready : in  std_logic;
+      m_axi_wdata   : out std_logic_vector(31 downto 0);
+      m_axi_wstrb   : out std_logic_vector(3 downto 0);
+      m_axi_wvalid  : out std_logic;
+      m_axi_wready  : in  std_logic;
+      m_axi_bresp   : in  std_logic_vector(1 downto 0);
+      m_axi_bvalid  : in  std_logic;
+      m_axi_bready  : out std_logic;
+      m_axi_araddr  : out std_logic_vector(30 downto 0);
+      m_axi_arprot  : out std_logic_vector(2 downto 0);
+      m_axi_arvalid : out std_logic;
+      m_axi_arready : in  std_logic;
+      m_axi_rdata   : in  std_logic_vector(31 downto 0);
+      m_axi_rresp   : in  std_logic_vector(1 downto 0);
+      m_axi_rvalid  : in  std_logic;
+      m_axi_rready  : out std_logic 
+    );
+  end component;
+
+  signal rst_n : std_logic;
+
   -- AXI4LITE signals
   signal axi_awaddr  : std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
   signal axi_awready : std_logic;
@@ -112,6 +171,27 @@ architecture arch_imp of synth_axi_ctrl is
   signal axi_rresp   : std_logic_vector(1 downto 0);
   signal axi_rvalid  : std_logic;
 
+  -- clock conversion axi bus
+  signal m_axi_awaddr  : std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
+  signal m_axi_awprot  : std_logic_vector( 2 downto 0);
+  signal m_axi_awvalid : std_logic;
+  signal m_axi_awready : std_logic;
+  signal m_axi_wdata   : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+  signal m_axi_wstrb   : std_logic_vector( 3 downto 0);
+  signal m_axi_wvalid  : std_logic;
+  signal m_axi_wready  : std_logic;
+  signal m_axi_bresp   : std_logic_vector( 1 downto 0);
+  signal m_axi_bvalid  : std_logic;
+  signal m_axi_bready  : std_logic;
+  signal m_axi_araddr  : std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
+  signal m_axi_arprot  : std_logic_vector( 2 downto 0);
+  signal m_axi_arvalid : std_logic;
+  signal m_axi_arready : std_logic;
+  signal m_axi_rdata   : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+  signal m_axi_rresp   : std_logic_vector( 1 downto 0);
+  signal m_axi_rvalid  : std_logic;
+  signal m_axi_rready  : std_logic;
+
   -- constants
   constant ADDR_LSB : integer := (C_S_AXI_DATA_WIDTH/32)+ 1;
   constant OPT_MEM_ADDR_BITS : integer := 8;
@@ -122,133 +202,160 @@ architecture arch_imp of synth_axi_ctrl is
   -- phase increment table array
   signal ph_inc_table_int : t_ph_inc_lut;
 
+  -- adsr arrays
+  signal  attack_steps_int,
+          decay_steps_int,
+          release_steps_int  : t_adsr;
+
   -- memory-mapped registers
-  signal pulse_width_reg : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-  signal pulse_reg       : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-  signal ramp_reg        : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-  signal saw_reg         : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-  signal tri_reg         : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-  signal sin_reg         : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-  signal out_amp_reg     : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-  signal out_shift_reg   : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-  signal wrapback_reg    : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+  signal  pulse_width_reg,
+          pulse_reg,
+          ramp_reg,
+          saw_reg,
+          tri_reg,
+          sine_reg,
+          out_amp_reg,
+          out_shift_reg,
+          wrapback_reg,
+          attack_length_reg,
+          decay_length_reg,
+          sustain_amt_reg,
+          release_length_reg  : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
 
   -- address indexing signals
   signal byte_index  : integer;
   signal mem_logic   : std_logic_vector(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB);
 
-   --State machine local parameters
+   -- State machine local parameters
   constant Idle : std_logic_vector(1 downto 0) := "00";
   constant Raddr: std_logic_vector(1 downto 0) := "10";
   constant Rdata: std_logic_vector(1 downto 0) := "11";
   constant Waddr: std_logic_vector(1 downto 0) := "10";
   constant Wdata: std_logic_vector(1 downto 0) := "11";
 
-   --State machine variables
+   -- State machine variables
   signal state_read : std_logic_vector(1 downto 0);
   signal state_write: std_logic_vector(1 downto 0); 
 
+  -- array address
+  signal array_addr : integer range ADDR_LSB to 2**(ADDR_LSB + OPT_MEM_ADDR_BITS);
+
 begin
+
+  rst_n <= not(rst);
   -- output port assignements
-  note_amps    <= note_amps_int;
-  ph_inc_table <= ph_inc_table_int;
+  note_amps     <= note_amps_int;
+  ph_inc_table  <= ph_inc_table_int;
+  attack_steps  <= attack_steps_int;
+  decay_steps   <= decay_steps_int;
+  release_steps <= release_steps_int;
 
   wfrm_amps(I_PULSE) <= unsigned(pulse_reg(WIDTH_WAVE_GAIN-1 downto 0));
   wfrm_amps(I_RAMP)  <= unsigned(ramp_reg(WIDTH_WAVE_GAIN-1 downto 0));
   wfrm_amps(I_SAW)   <= unsigned(saw_reg(WIDTH_WAVE_GAIN-1 downto 0));
   wfrm_amps(I_TRI)   <= unsigned(tri_reg(WIDTH_WAVE_GAIN-1 downto 0));
-  wfrm_amps(I_SINE)  <= unsigned(sin_reg(WIDTH_WAVE_GAIN-1 downto 0));
+  wfrm_amps(I_SINE)  <= unsigned(sine_reg(WIDTH_WAVE_GAIN-1 downto 0));
   
   wfrm_phs(I_PULSE)  <= unsigned(pulse_reg(C_S_AXI_DATA_WIDTH-1 downto C_S_AXI_DATA_WIDTH/2));
   wfrm_phs(I_RAMP)   <= unsigned(ramp_reg(C_S_AXI_DATA_WIDTH-1 downto C_S_AXI_DATA_WIDTH/2));
   wfrm_phs(I_SAW)    <= unsigned(saw_reg(C_S_AXI_DATA_WIDTH-1 downto C_S_AXI_DATA_WIDTH/2));
   wfrm_phs(I_TRI)    <= unsigned(tri_reg(C_S_AXI_DATA_WIDTH-1 downto C_S_AXI_DATA_WIDTH/2));
-  wfrm_phs(I_SINE)   <= unsigned(sin_reg(C_S_AXI_DATA_WIDTH-1 downto C_S_AXI_DATA_WIDTH/2));
+  wfrm_phs(I_SINE)   <= unsigned(sine_reg(C_S_AXI_DATA_WIDTH-1 downto C_S_AXI_DATA_WIDTH/2));
 
   pulse_width <= unsigned(pulse_width_reg(WIDTH_PULSE_WIDTH-1 downto 0));
 
   out_amp   <= unsigned(out_amp_reg(WIDTH_OUT_GAIN-1 downto 0));
   out_shift <= unsigned(out_shift_reg(WIDTH_OUT_SHIFT-1 downto 0));
 
-  S_AXI_AWREADY <= axi_awready;
-  S_AXI_WREADY  <= axi_wready;
-  S_AXI_BRESP   <= axi_bresp;
-  S_AXI_BVALID  <= axi_bvalid;
-  S_AXI_ARREADY <= axi_arready;
-  S_AXI_RRESP   <= axi_rresp;
-  S_AXI_RVALID  <= axi_rvalid;
-  mem_logic     <= S_AXI_AWADDR(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB) when (S_AXI_AWVALID = '1') else axi_awaddr(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB);
+  attack_length   <= unsigned(attack_length_reg(WIDTH_ADSR_COUNT-1 downto 0));
+  decay_length    <= unsigned(decay_length_reg(WIDTH_ADSR_COUNT-1 downto 0));
+  sustain_amt     <= unsigned(sustain_amt_reg(WIDTH_ADSR_COUNT-1 downto 0));
+  release_length  <= unsigned(release_length_reg(WIDTH_ADSR_COUNT-1 downto 0));
+
+  m_axi_awready <= axi_awready;
+  m_axi_wready  <= axi_wready;
+  m_axi_bresp   <= axi_bresp;
+  m_axi_bvalid  <= axi_bvalid;
+  m_axi_arready <= axi_arready;
+  m_axi_rresp   <= axi_rresp;
+  m_axi_rvalid  <= axi_rvalid;
+  mem_logic     <= m_axi_awaddr(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB) when (m_axi_awvalid = '1')
+                  else axi_awaddr(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB);
+
+  -- array address logic
+  array_addr <= to_integer(unsigned(mem_logic(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB)));
 
   -- Implement Write state machine
   -- Outstanding write transactions are not supported by the slave i.e., master should assert bready to receive response on or before it starts sending the new transaction
-   process (S_AXI_ACLK)                                       
-     begin                                       
-       if rising_edge(S_AXI_ACLK) then
-          if S_AXI_ARESETN = '0' then
-            --asserting initial values to all 0's during reset
-            axi_awready <= '0';                                       
-            axi_wready <= '0';                                       
-            axi_bvalid <= '0';                                       
-            axi_bresp <= (others => '0');                                       
-            state_write <= Idle;
-          else
-            case (state_write) is
+   process (clk)                                       
+    begin                                       
+      if rising_edge(clk) then
+        if rst_n = '0' then
+          --asserting initial values to all 0's during reset
+          axi_awready <= '0';                                       
+          axi_wready  <= '0';                                       
+          axi_bvalid  <= '0';                                       
+          axi_bresp   <= (others => '0');                                       
+          state_write <= Idle;
+        else
+          case (state_write) is
 
-               when Idle =>
-               -- Initial state indicating reset is done and ready to receive read/write transactions                                        
-                 if (S_AXI_ARESETN = '1') then                                       
-                   axi_awready <= '1';                                       
-                   axi_wready <= '1';                                       
-                   state_write <= Waddr;                                       
-                 else state_write <= state_write;                                       
-                 end if;
+            when Idle =>
+            -- Initial state indicating reset is done and ready to receive read/write transactions                                        
+              if (rst_n = '1') then                                       
+                axi_awready    <= '1';                                       
+                axi_wready     <= '1';                                       
+                state_write    <= Waddr;                                       
+              else
+                state_write    <= state_write;                                       
+              end if;
 
-               when Waddr =>
-               -- At this state, slave is ready to receive address along with corresponding control
-               -- signals and first data packet. Response valid is also handled at this state                                       
-                 if (S_AXI_AWVALID = '1' and axi_awready = '1') then                                       
-                   axi_awaddr <= S_AXI_AWADDR;                                       
-                   if (S_AXI_WVALID = '1') then                                       
-                     axi_awready <= '1';                                       
-                     state_write <= Waddr;                                       
-                     axi_bvalid <= '1';                                       
-                   else                                       
-                     axi_awready <= '0';                                       
-                     state_write <= Wdata;                                       
-                     if (S_AXI_BREADY = '1' and axi_bvalid = '1') then                                       
-                       axi_bvalid <= '0';                                       
-                     end if;                                       
-                   end if;                                       
-                 else                                        
-                   state_write <= state_write;                                       
-                   if (S_AXI_BREADY = '1' and axi_bvalid = '1') then                                       
-                     axi_bvalid <= '0';                                       
-                   end if;                                       
-                 end if;
+            when Waddr =>
+            -- At this state, slave is ready to receive address along with corresponding control
+            -- signals and first data packet. Response valid is also handled at this state                                       
+              if (m_axi_awvalid = '1' and axi_awready = '1') then                                       
+                axi_awaddr <= m_axi_awaddr;                                       
+                if (m_axi_wvalid = '1') then                                       
+                  axi_awready <= '1';                                       
+                  state_write <= Waddr;                                       
+                  axi_bvalid  <= '1';                                       
+                else                                       
+                  axi_awready <= '0';                                       
+                  state_write <= Wdata;                                       
+                  if (m_axi_bready = '1' and axi_bvalid = '1') then                                       
+                    axi_bvalid <= '0';                                       
+                  end if;                                       
+                end if;                                       
+              else                                        
+                state_write <= state_write;                                       
+                if (m_axi_bready = '1' and axi_bvalid = '1') then                                       
+                  axi_bvalid <= '0';                                       
+                end if;                                       
+              end if;
 
-               when Wdata =>
-               -- At this state, slave is ready to receive the data packets until the number 
-               -- of transfers is equal to burst length                                       
-                 if (S_AXI_WVALID = '1') then                                       
-                   state_write <= Waddr;                                       
-                   axi_bvalid <= '1';                                       
-                   axi_awready <= '1';                                       
-                 else                                       
-                   state_write <= state_write;                                       
-                   if (S_AXI_BREADY ='1' and axi_bvalid = '1') then                                       
-                     axi_bvalid <= '0';                                       
-                   end if;                                       
-                 end if;
+            when Wdata =>
+            -- At this state, slave is ready to receive the data packets until the number 
+            -- of transfers is equal to burst length                                       
+              if (m_axi_wvalid = '1') then                                       
+                state_write <= Waddr;                                       
+                axi_bvalid  <= '1';                                       
+                axi_awready <= '1';                                       
+              else                                       
+                state_write <= state_write;                                       
+                if (m_axi_bready ='1' and axi_bvalid = '1') then                                       
+                  axi_bvalid <= '0';                                       
+                end if;                                       
+              end if;
 
-               when others =>
-               -- reserved                                       
-                 axi_awready <= '0';                                       
-                 axi_wready <= '0';                                       
-                 axi_bvalid <= '0';
+            when others =>
+            -- reserved                                       
+              axi_awready <= '0';                                       
+              axi_wready  <= '0';                                       
+              axi_bvalid  <= '0';
 
-             end case;                                       
-          end if;                                       
-        end if;                                                
+          end case;                                       
+        end if;                                       
+      end if;                                                
    end process;
 
   -- Implement memory mapped register select and write logic generation
@@ -258,135 +365,124 @@ begin
   -- These registers are cleared when reset (active low) is applied.
   -- Slave register write enable is asserted when valid address and data are available
   -- and the slave is ready to accept the write address and write data.
-  process (S_AXI_ACLK)
+  process (clk)
+    
+    variable temp : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+
+    -- procedure to simplify write logic with signal input
+    procedure write_strobe(
+     signal reg   : inout std_logic_vector;
+     signal wdata : in    std_logic_vector;
+     signal wstrb : in    std_logic_vector
+   ) is
+   begin
+     for byte_index in 0 to (wdata'length/8 - 1) loop
+       if wstrb(byte_index) = '1' then
+         reg(byte_index*8 + 7 downto byte_index*8) <= wdata(byte_index*8 + 7 downto byte_index*8);
+       end if;
+     end loop;
+   end procedure;
+   -- procedure to simplify write logic with variable input
+   procedure write_strobe_array(
+    variable reg   : inout std_logic_vector;
+    signal   wdata : in    std_logic_vector;
+    signal   wstrb : in    std_logic_vector
+  ) is
   begin
-    if rising_edge(S_AXI_ACLK) then 
-      if S_AXI_ARESETN = '0' then
+    for byte_index in 0 to (wdata'length/8 - 1) loop
+      if wstrb(byte_index) = '1' then
+        reg(byte_index*8 + 7 downto byte_index*8) := wdata(byte_index*8 + 7 downto byte_index*8);
+      end if;
+    end loop;
+  end procedure;
+
+  begin
+    if rising_edge(clk) then 
+      if rst_n = '0' then
+        pulse_width_reg    <= (others => '0');
         pulse_reg          <= (others => '0');
         ramp_reg           <= (others => '0');
         saw_reg            <= (others => '0');
         tri_reg            <= (others => '0');
-        sin_reg            <= (others => '0');
+        sine_reg           <= (others => '0');
+        out_amp_reg        <= (others => '0');
+        out_shift_reg      <= (others => '0');
+        attack_length_reg  <= (others => '0');
+        decay_length_reg   <= (others => '0');
+        sustain_amt_reg    <= (others => '0');
+        release_length_reg <= (others => '0');
         wrapback_reg       <= (others => '0');
         note_amps_int      <= (others => (others => '0'));
         ph_inc_table_int   <= ph_inc_lut;
+        attack_steps_int   <= (others => (others => '0'));
+        decay_steps_int    <= (others => (others => '0'));
+        release_steps_int  <= (others => (others => '0'));
       else
-        if (S_AXI_WVALID = '1') then
+        if (m_axi_wvalid = '1') then
           case(mem_logic(mem_logic'high downto mem_logic'high-1)) is
 
             when "00" =>
-              -- Registers 127 to 0 hold note information.
-              for byte_index in 0 to (C_S_AXI_ADDR_WIDTH/8-1) loop
-                if (S_AXI_WSTRB(0) = '1') then
-                  -- Respective byte enables are asserted as per write strobes.
-                  note_amps_int(to_integer(unsigned(mem_logic(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB)))) <= unsigned(S_AXI_WDATA(WIDTH_NOTE_GAIN-1 downto 0));
-                end if;
-              end loop;
+              write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
+              note_amps_int(array_addr) <= unsigned(temp(WIDTH_NOTE_GAIN-1 downto 0));
 
             when "01" =>
               -- Registers for synth settings
               case(mem_logic(mem_logic'high-2 downto ADDR_LSB)) is
-                when OFFSET_PULSE_WIDTH_REG =>
-                for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
-                  if ( S_AXI_WSTRB(byte_index) = '1' ) then
-                    -- Respective byte enables are asserted as per write strobes                   
-                    -- pulse wave register
-                    pulse_width_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
-                  end if;
-                end loop;
-
-                when OFFSET_PULSE_REG =>
-                for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
-                  if ( S_AXI_WSTRB(byte_index) = '1' ) then
-                    -- Respective byte enables are asserted as per write strobes                   
-                    -- pulse wave register
-                    pulse_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
-                  end if;
-                end loop;
-
-                when OFFSET_RAMP_REG =>
-                for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
-                  if ( S_AXI_WSTRB(byte_index) = '1' ) then
-                    -- Respective byte enables are asserted as per write strobes                   
-                    -- ramp wave register
-                    ramp_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
-                  end if;
-                end loop;
-
-                when OFFSET_SAW_REG =>
-                for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
-                  if ( S_AXI_WSTRB(byte_index) = '1' ) then
-                    -- Respective byte enables are asserted as per write strobes                   
-                    -- saw wave register
-                    saw_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
-                  end if;
-                end loop;
-
-                when OFFSET_TRI_REG =>
-                for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
-                  if ( S_AXI_WSTRB(byte_index) = '1' ) then
-                    -- Respective byte enables are asserted as per write strobes                   
-                    -- triangle wave register
-                    tri_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
-                  end if;
-                end loop;
-
-                when OFFSET_SINE_REG =>
-                for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
-                  if ( S_AXI_WSTRB(byte_index) = '1' ) then
-                    -- Respective byte enables are asserted as per write strobes                   
-                    -- sine wave register
-                    sin_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
-                  end if;
-                end loop;
+                when OFFSET_PULSE_WIDTH_REG  => write_strobe(pulse_width_reg, m_axi_wdata, m_axi_wstrb);
+                when OFFSET_PULSE_REG        => write_strobe(pulse_reg,       m_axi_wdata, m_axi_wstrb);
+                when OFFSET_RAMP_REG         => write_strobe(ramp_reg,        m_axi_wdata, m_axi_wstrb);
+                when OFFSET_SAW_REG          => write_strobe(saw_reg,         m_axi_wdata, m_axi_wstrb);
+                when OFFSET_TRI_REG          => write_strobe(tri_reg,         m_axi_wdata, m_axi_wstrb);
+                when OFFSET_SINE_REG         => write_strobe(sine_reg,        m_axi_wdata, m_axi_wstrb);
+                when OFFSET_GAIN_SCALE_REG   => write_strobe(out_amp_reg,     m_axi_wdata, m_axi_wstrb);
+                when OFFSET_GAIN_SHIFT_REG   => write_strobe(out_shift_reg,   m_axi_wdata, m_axi_wstrb);
                 
-                when OFFSET_GAIN_SCALE_REG =>
-                for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
-                  if ( S_AXI_WSTRB(byte_index) = '1' ) then
-                    -- Respective byte enables are asserted as per write strobes                   
-                    -- output amplitude register
-                    out_amp_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
-                  end if;
-                end loop;
-                
-                when OFFSET_GAIN_SHIFT_REG =>
-                for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
-                  if ( S_AXI_WSTRB(byte_index) = '1' ) then
-                    -- Respective byte enables are asserted as per write strobes                   
-                    -- output shift register
-                    out_shift_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
-                  end if;
-                end loop;
+                when OFFSET_ATTACK_STEP =>
+                  write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
+                  attack_steps_int(array_addr) <= unsigned(temp(WIDTH_ADSR_COUNT-1 downto 0));
                   
-                when OFFSET_WRAPBACK_REG =>
-                for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
-                  if ( S_AXI_WSTRB(byte_index) = '1' ) then
-                    -- Respective byte enables are asserted as per write strobes                   
-                    -- wrapback register
-                    wrapback_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
-                  end if;
-                end loop;
+                when OFFSET_DECAY_STEP =>
+                  write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
+                  decay_steps_int(array_addr) <= unsigned(temp(WIDTH_ADSR_COUNT-1 downto 0));
+                
+                when OFFSET_RELEASE_STEP =>
+                  write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
+                  release_steps_int(array_addr) <= unsigned(temp(WIDTH_ADSR_COUNT-1 downto 0));
+
+                when OFFSET_ATTACK_LENGTH     => write_strobe(attack_length_reg,  m_axi_wdata, m_axi_wstrb);
+                when OFFSET_DECAY_LENGTH      => write_strobe(decay_length_reg,   m_axi_wdata, m_axi_wstrb);
+                when OFFSET_SUSTAIN_AMT       => write_strobe(sustain_amt_reg,    m_axi_wdata, m_axi_wstrb);
+                when OFFSET_RELEASE_LENGTH    => write_strobe(release_length_reg, m_axi_wdata, m_axi_wstrb);
+                when OFFSET_WRAPBACK_REG      => write_strobe(wrapback_reg,       m_axi_wdata, m_axi_wstrb);
                 
                 when others =>
-                  pulse_width_reg <= pulse_width_reg;
-                  pulse_reg       <= pulse_reg;
-                  ramp_reg        <= ramp_reg;
-                  saw_reg         <= saw_reg;
-                  tri_reg         <= tri_reg;
-                  sin_reg         <= sin_reg;
-                  out_amp_reg     <= out_amp_reg;
-                  out_shift_reg   <= out_shift_reg;
-                  wrapback_reg    <= wrapback_reg;
+                  pulse_width_reg    <= pulse_width_reg;
+                  pulse_reg          <= pulse_reg;
+                  ramp_reg           <= ramp_reg;
+                  saw_reg            <= saw_reg;
+                  tri_reg            <= tri_reg;
+                  sine_reg           <= sine_reg;
+                  out_amp_reg        <= out_amp_reg;
+                  out_shift_reg      <= out_shift_reg;
+                  attack_steps_int   <= attack_steps_int;
+                  decay_steps_int    <= decay_steps_int;
+                  release_steps_int  <= release_steps_int;
+                  attack_length_reg  <= attack_length_reg;
+                  decay_length_reg   <= decay_length_reg;
+                  sustain_amt_reg    <= sustain_amt_reg;
+                  release_length_reg <= release_length_reg;
+                  wrapback_reg       <= wrapback_reg;
               
               end case;
             
             when "10" =>
             -- Registers for note frequency words
-            ph_inc_table_int(to_integer(unsigned(mem_logic(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB)))) <= unsigned(S_AXI_WDATA);
-
+              write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
+              ph_inc_table_int(array_addr) <= unsigned(temp);
+            
             when others =>
-            note_amps_int    <= note_amps_int;
-            ph_inc_table_int <= ph_inc_table_int;
+              note_amps_int    <= note_amps_int;
+              ph_inc_table_int <= ph_inc_table_int;
 
           end case;
         end if;
@@ -395,10 +491,10 @@ begin
   end process; 
 
   -- Implement read state machine
-   process (S_AXI_ACLK)                                          
+   process (clk)                                          
      begin                                          
-       if rising_edge(S_AXI_ACLK) then                                           
-          if S_AXI_ARESETN = '0' then                                          
+       if rising_edge(clk) then                                           
+          if rst_n = '0' then                                          
             --asserting initial values to all 0's during reset                                          
             axi_arready <= '0';                                          
             axi_rvalid <= '0';                                          
@@ -407,22 +503,22 @@ begin
           else                                          
             case (state_read) is                                          
               when Idle =>    --Initial state inidicating reset is done and ready to receive read/write transactions                                          
-                  if (S_AXI_ARESETN = '1') then                                          
+                  if (rst_n = '1') then                                          
                     axi_arready <= '1';                                          
                     state_read <= Raddr;                                          
                   else state_read <= state_read;                                          
                   end if;                                          
               when Raddr =>    --At this state, slave is ready to receive address along with corresponding control signals                                          
-                  if (S_AXI_ARVALID = '1' and axi_arready = '1') then                                          
+                  if (m_axi_arvalid = '1' and axi_arready = '1') then                                          
                     state_read <= Rdata;                                          
                     axi_rvalid <= '1';                                          
                     axi_arready <= '0';                                          
-                    axi_araddr <= S_AXI_ARADDR;                                          
+                    axi_araddr <= m_axi_araddr;                                          
                   else                                          
                     state_read <= state_read;                                          
                   end if;                                          
               when Rdata =>    --At this state, slave is ready to send the data packets until the number of transfers is equal to burst length                                          
-                  if (axi_rvalid = '1' and S_AXI_RREADY = '1') then                                          
+                  if (axi_rvalid = '1' and m_axi_rready = '1') then                                          
                     axi_rvalid <= '0';                                          
                     axi_arready <= '1';                                          
                     state_read <= Raddr;                                          
@@ -438,25 +534,76 @@ begin
     end process;             
 
   -- Implement memory mapped register select and read logic generation
-  S_AXI_RDATA <= 
+  m_axi_rdata <= 
     -- read note amplitude
     x"000000" & '0' & std_logic_vector(note_amps_int(to_integer(unsigned(axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB))))) when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS downto ADDR_LSB+OPT_MEM_ADDR_BITS-1) = "00" ) else
     -- read from note phase increment table
     std_logic_vector(ph_inc_table_int(to_integer(unsigned(axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB))))) when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS downto ADDR_LSB+OPT_MEM_ADDR_BITS-1) = "10" ) else
     -- read from synth settings
-    pulse_width_reg  when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_PULSE_WIDTH_REG  ) else 
-    pulse_reg        when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_PULSE_REG        ) else 
-    ramp_reg         when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_RAMP_REG         ) else 
-    saw_reg          when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_SAW_REG          ) else 
-    tri_reg          when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_TRI_REG          ) else 
-    sin_reg          when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_SINE_REG         ) else 
-    out_amp_reg      when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_GAIN_SCALE_REG   ) else
-    out_shift_reg    when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_GAIN_SHIFT_REG   ) else
+    pulse_width_reg    when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_PULSE_WIDTH_REG   ) else 
+    pulse_reg          when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_PULSE_REG         ) else 
+    ramp_reg           when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_RAMP_REG          ) else 
+    saw_reg            when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_SAW_REG           ) else 
+    tri_reg            when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_TRI_REG           ) else 
+    sine_reg           when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_SINE_REG          ) else 
+    out_amp_reg        when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_GAIN_SCALE_REG    ) else
+    out_shift_reg      when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_GAIN_SHIFT_REG    ) else
+    -- read from adsr settings
+    attack_length_reg  when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_ATTACK_LENGTH     ) else 
+    decay_length_reg   when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_DECAY_LENGTH      ) else 
+    sustain_amt_reg    when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_SUSTAIN_AMT       ) else 
+    release_length_reg when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_RELEASE_LENGTH    ) else 
     -- read from info registers
-    SYNTH_ENG_REV    when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_REV_REG          ) else 
-    SYNTH_ENG_DATE   when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_DATE_REG         ) else 
-    wrapback_reg     when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_WRAPBACK_REG     ) else 
+    SYNTH_ENG_REV      when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_REV_REG           ) else 
+    SYNTH_ENG_DATE     when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_DATE_REG          ) else 
+    wrapback_reg       when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_WRAPBACK_REG      ) else 
     -- default
     (others => '0');
+
+  u_axi_converter: axi_clock_converter
+    port map (
+      s_axi_aclk    => S_AXI_ACLK,
+      s_axi_aresetn => S_AXI_ARESETN,
+      s_axi_awaddr  => S_AXI_AWADDR,
+      s_axi_awprot  => S_AXI_AWPROT,
+      s_axi_awvalid => S_AXI_AWVALID,
+      s_axi_awready => S_AXI_AWREADY,
+      s_axi_wdata   => S_AXI_WDATA,
+      s_axi_wstrb   => S_AXI_WSTRB,
+      s_axi_wvalid  => S_AXI_WVALID,
+      s_axi_wready  => S_AXI_WREADY,
+      s_axi_bresp   => S_AXI_BRESP,
+      s_axi_bvalid  => S_AXI_BVALID,
+      s_axi_bready  => S_AXI_BREADY,
+      s_axi_araddr  => S_AXI_ARADDR,
+      s_axi_arprot  => S_AXI_ARPROT,
+      s_axi_arvalid => S_AXI_ARVALID,
+      s_axi_arready => S_AXI_ARREADY,
+      s_axi_rdata   => S_AXI_RDATA,
+      s_axi_rresp   => S_AXI_RRESP,
+      s_axi_rvalid  => S_AXI_RVALID,
+      s_axi_rready  => S_AXI_RREADY,
+      m_axi_aclk    => clk,
+      m_axi_aresetn => rst_n,
+      m_axi_awaddr  => m_axi_awaddr,
+      m_axi_awprot  => m_axi_awprot,
+      m_axi_awvalid => m_axi_awvalid,
+      m_axi_awready => m_axi_awready,
+      m_axi_wdata   => m_axi_wdata,
+      m_axi_wstrb   => m_axi_wstrb,
+      m_axi_wvalid  => m_axi_wvalid,
+      m_axi_wready  => m_axi_wready,
+      m_axi_bresp   => m_axi_bresp,
+      m_axi_bvalid  => m_axi_bvalid,
+      m_axi_bready  => m_axi_bready,
+      m_axi_araddr  => m_axi_araddr,
+      m_axi_arprot  => m_axi_arprot,
+      m_axi_arvalid => m_axi_arvalid,
+      m_axi_arready => m_axi_arready,
+      m_axi_rdata   => m_axi_rdata,
+      m_axi_rresp   => m_axi_rresp,
+      m_axi_rvalid  => m_axi_rvalid,
+      m_axi_rready  => m_axi_rready
+    );
 
 end arch_imp;

@@ -133,15 +133,6 @@ end top;
       );
     end component clk_wiz_mclk;
 
-    component clk_wiz_25_to_100 is
-      port (
-        reset         : in  std_logic;
-        clk_in1       : in  std_logic;
-        locked        : out std_logic;
-        clk_out1     : out std_logic
-      );
-    end component clk_wiz_25_to_100;
-
     component synth_engine is
       generic (
         -- AXI parameters
@@ -157,23 +148,25 @@ end top;
         rst           : in std_logic;
   
         -- AXI control interface
+        s_axi_aclk    : in  std_logic;
+        s_axi_aresetn : in  std_logic;
         s_axi_awaddr  : in std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
         s_axi_awprot  : in std_logic_vector(2 downto 0);
-        s_axi_awvalid  : in std_logic;
-        s_axi_awready  : out std_logic;
-        s_axi_wdata    : in  std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-        s_axi_wstrb    : in  std_logic_vector(3 downto 0);
+        s_axi_awvalid : in std_logic;
+        s_axi_awready : out std_logic;
+        s_axi_wdata   : in  std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+        s_axi_wstrb   : in  std_logic_vector(3 downto 0);
         s_axi_wvalid  : in  std_logic;
         s_axi_wready  : out std_logic;
-        s_axi_bresp    : out std_logic_vector(1 downto 0);
+        s_axi_bresp   : out std_logic_vector(1 downto 0);
         s_axi_bvalid  : out std_logic;
         s_axi_bready  : in  std_logic;
         s_axi_araddr  : in  std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
         s_axi_arprot  : in  std_logic_vector(2 downto 0);
-        s_axi_arvalid  : in  std_logic;
-        s_axi_arready  : out std_logic;
-        s_axi_rdata    : out std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-        s_axi_rresp    : out std_logic_vector(1 downto 0);
+        s_axi_arvalid : in  std_logic;
+        s_axi_arready : out std_logic;
+        s_axi_rdata   : out std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+        s_axi_rresp   : out std_logic_vector(1 downto 0);
         s_axi_rvalid  : out std_logic;
         s_axi_rready  : in  std_logic;
   
@@ -209,18 +202,22 @@ end top;
         mute_n      : out std_logic                                  -- codec mute enable
       );
     end component codec_i2s;
+
+    component rst_sync is
+      port (
+        rst_async_in : in  std_logic;
+        clk_sync_in  : in  std_logic;
+        rst_sync_out : out std_logic
+      );
+    end component rst_sync;
     
     -- Clocks and resets
-    signal clk25   : std_logic;
     signal clk100  : std_logic;
-    signal rst25   : std_logic;
-    signal rst25_n : std_logic;
+    signal rst100   : std_logic;
+    signal rst100_n : std_logic;
     
-    signal mclk_12p88 : std_logic;
-    
-    
-    signal phases : t_ph_inc;
-    signal mixes  : t_wave_data;
+    signal clk12p288 : std_logic;
+    signal rst12p288  : std_logic;
     
     signal audio_data : std_logic_vector(23 downto 0);
     
@@ -262,7 +259,7 @@ end top;
       
   begin
   
-  rst25 <= not(rst25_n);
+  rst100 <= not(rst100_n);
   
   ps_i: component ps
     port map (
@@ -281,8 +278,8 @@ end top;
       DDR_ras_n => DDR_ras_n,
       DDR_reset_n => DDR_reset_n,
       DDR_we_n => DDR_we_n,
-      FCLK_CLK0 => clk25,
-      FCLK_RESET0_N => rst25_n,
+      FCLK_CLK0 => clk100,
+      FCLK_RESET0_N => rst100_n,
       FIXED_IO_ddr_vrn => FIXED_IO_ddr_vrn,
       FIXED_IO_ddr_vrp => FIXED_IO_ddr_vrp,
       FIXED_IO_mio(53 downto 0) => FIXED_IO_mio(53 downto 0),
@@ -337,23 +334,6 @@ end top;
       T => iic_sda_t
     );
       
-  -- MCLK MMCM
-  u_mclk_mmcm: clk_wiz_mclk
-    port map (
-      reset         => rst25,
-      clk_in1       => clk100,
-      locked        => open,
-      clk_out1     => mclk_12p88
-    );
-
-    u_mclk_25_to_100: clk_wiz_25_to_100
-      port map (
-        reset         => rst25,
-        clk_in1       => clk25,
-        locked        => open,
-        clk_out1     => clk100
-      );
-      
   -- synth engine
   u_synth_engine: synth_engine
     generic map (
@@ -366,8 +346,10 @@ end top;
     )
     port map (
       -- AXI control interface
-      clk           => clk25,
-      rst           => rst25,
+      clk           => clk12p288,
+      rst           => rst12p288,
+      s_axi_aclk    => clk100,
+      s_axi_aresetn => rst100_n,
       s_axi_awaddr  => awaddr,
       s_axi_awprot  => awprot,
       s_axi_awvalid => awvalid,
@@ -392,31 +374,47 @@ end top;
       audio_out     => audio_data
     );
     
-    -- Audio codec
-    u_audio_codec: codec_i2s
-      generic map (
-        G_MCLK_BCLK_RATIO => 2,
-        G_DATA_WIDTH      => 24,
-        G_WORDSIZE        => 32
-      )
-      port map (
-        -- input clock domain
-        rst         => rst25,
-        clk         => clk25,
-        dac_data_l  => audio_data,
-        dac_data_r  => audio_data,
-        dac_latched => open,
-        adc_data    => open,
-        adc_latched => open,
-        -- mclk domain
-        mclk_in     => mclk_12p88,
-        mclk        => ac_mclk,
-        bclk        => ac_bclk,
-        pbdat       => ac_pbdat,
-        pblrc       => ac_pblrc,
-        recdat      => ac_recdat,
-        reclrc      => ac_reclrc,
-        mute_n      => ac_muten
-      );
+  -- Audio codec
+  u_audio_codec: codec_i2s
+    generic map (
+      G_MCLK_BCLK_RATIO => 2,
+      G_DATA_WIDTH      => 24,
+      G_WORDSIZE        => 32
+    )
+    port map (
+      -- input clock domain
+      rst         => rst100,
+      clk         => clk100,
+      dac_data_l  => audio_data,
+      dac_data_r  => audio_data,
+      dac_latched => open,
+      adc_data    => open,
+      adc_latched => open,
+      -- mclk domain
+      mclk_in     => clk12p288,
+      mclk        => ac_mclk,
+      bclk        => ac_bclk,
+      pbdat       => ac_pbdat,
+      pblrc       => ac_pblrc,
+      recdat      => ac_recdat,
+      reclrc      => ac_reclrc,
+      mute_n      => ac_muten
+    );
+        
+  -- MCLK MMCM
+  u_mclk_mmcm: clk_wiz_mclk
+    port map (
+      reset         => rst100,
+      clk_in1       => clk100,
+      locked        => open,
+      clk_out1     => clk12p288
+    );
+    
+    u_rst12p288_sync: rst_sync
+    port map (
+      rst_async_in => rst100,
+      clk_sync_in  => clk12p288,
+      rst_sync_out => rst12p288
+    );
 
-  end STRUCTURE;
+end STRUCTURE;
