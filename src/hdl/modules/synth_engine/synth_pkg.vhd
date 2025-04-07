@@ -69,6 +69,8 @@ package synth_pkg is
   type t_wfrm_ph     is array (0 to NUM_WFRMS-1) of unsigned(WIDTH_WAVE_DATA-1 downto 0);
 
   type t_adsr        is array (0 to 7) of unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+  type t_adsr_count  is array (I_LOWEST_NOTE to I_HIGHEST_NOTE) of unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+  type t_note_acc    is array (I_LOWEST_NOTE to I_HIGHEST_NOTE) of unsigned(WIDTH_ADSR_COUNT-1 downto 0);
 
 end synth_pkg;
 

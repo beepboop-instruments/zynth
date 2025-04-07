@@ -272,21 +272,21 @@ begin
     wait for clk_period * 1024;
     
     -- Write to register 0
-    axi_write("000" & x"0000000", x"00000018");
+    --axi_write("000" & x"0000000", x"00000018");
     -- Read from register 0
     axi_read("000" & x"0000000");
     -- Write to note 69 (A4) reg
-    axi_write("000" & x"0000114", x"0000007F");
+    --axi_write("000" & x"0000114", x"0000007F");
     -- Write to note 80 reg
     --axi_write("0100100000", x"0000FFF0");
     -- Write to note 127 reg
-    axi_write("000" & x"00001FC", x"000000A5");
+    axi_write("000" & x"00001FC", x"0000007F");
     -- Write to output amplitude register
     axi_write("000" & x"0000220", x"0000000A");
     axi_write("000" & x"0000224", x"0000003F");
     -- Write to pulse reg
     axi_write("000" & x"0000200", x"00004000");
-    axi_write("000" & x"0000204", x"0000000F");
+    axi_write("000" & x"0000204", x"00000000");
     -- Write to ramp reg
     axi_write("000" & x"0000208", x"00000000");
     -- Write to saw reg
@@ -294,7 +294,7 @@ begin
     -- Write to tri reg
     axi_write("000" & x"0000210", x"00000000");
     -- Write to sin reg
-    axi_write("000" & x"0000214", x"0000000F");
+    axi_write("000" & x"0000214", x"0000007F");
     -- Write to wrapback reg
     axi_write("000" & x"00003FC", x"ABCD1234");
     -- Read from wrapback reg
@@ -307,7 +307,21 @@ begin
     axi_read("000" & x"00005D4");
     -- Read from phase increment table note 119
     axi_read("000" & x"00005DC");
-    
+    -- Write to attack regs
+    axi_write("000" & x"0000280", x"00000030");
+    axi_write("000" & x"0000284", x"00000010");
+    axi_write("000" & x"00002E0", x"00000001");
+    -- Write to decay regs
+    axi_write("000" & x"00002A0", x"00000008");
+    axi_write("000" & x"00002E4", x"00000003");
+    -- Write to release regs
+    axi_write("000" & x"00002C0", x"00000010");
+    axi_write("000" & x"00002EC", x"00000002");
+
+    wait for 6e6 ns;
+    -- Write to note 127 reg
+    axi_write("000" & x"00001FC", x"00000000");
+
     -- End Simulation
     wait for clk_period2;
     report "Testbench completed." severity note;

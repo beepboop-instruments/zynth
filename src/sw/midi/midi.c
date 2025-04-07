@@ -445,7 +445,7 @@ int MidiPitchBend(u8 Ch) {
   int pitchBend = (MidiBuffer[1]<<7) + MidiBuffer[0];
   double scale = get_pitch_bend_scale(pitchBend);
 
-  for (u8 i = 0; i < 128; i ++) {
+  for (u8 i = 116; i < 128; i ++) {
     FreqWords[i] = (u32)((double)(FreqWordDefaults[i]) * scale);
   }
 

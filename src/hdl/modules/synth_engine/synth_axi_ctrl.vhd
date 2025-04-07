@@ -428,34 +428,22 @@ begin
             when "01" =>
               -- Registers for synth settings
               case(mem_logic(mem_logic'high-2 downto ADDR_LSB)) is
-                when OFFSET_PULSE_WIDTH_REG  => write_strobe(pulse_width_reg, m_axi_wdata, m_axi_wstrb);
-                when OFFSET_PULSE_REG        => write_strobe(pulse_reg,       m_axi_wdata, m_axi_wstrb);
-                when OFFSET_RAMP_REG         => write_strobe(ramp_reg,        m_axi_wdata, m_axi_wstrb);
-                when OFFSET_SAW_REG          => write_strobe(saw_reg,         m_axi_wdata, m_axi_wstrb);
-                when OFFSET_TRI_REG          => write_strobe(tri_reg,         m_axi_wdata, m_axi_wstrb);
-                when OFFSET_SINE_REG         => write_strobe(sine_reg,        m_axi_wdata, m_axi_wstrb);
-                when OFFSET_GAIN_SCALE_REG   => write_strobe(out_amp_reg,     m_axi_wdata, m_axi_wstrb);
-                when OFFSET_GAIN_SHIFT_REG   => write_strobe(out_shift_reg,   m_axi_wdata, m_axi_wstrb);
-                
-                when OFFSET_ATTACK_STEP =>
-                  write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
-                  attack_steps_int(array_addr) <= unsigned(temp(WIDTH_ADSR_COUNT-1 downto 0));
-                  
-                when OFFSET_DECAY_STEP =>
-                  write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
-                  decay_steps_int(array_addr) <= unsigned(temp(WIDTH_ADSR_COUNT-1 downto 0));
-                
-                when OFFSET_RELEASE_STEP =>
-                  write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
-                  release_steps_int(array_addr) <= unsigned(temp(WIDTH_ADSR_COUNT-1 downto 0));
-
-                when OFFSET_ATTACK_LENGTH     => write_strobe(attack_length_reg,  m_axi_wdata, m_axi_wstrb);
-                when OFFSET_DECAY_LENGTH      => write_strobe(decay_length_reg,   m_axi_wdata, m_axi_wstrb);
-                when OFFSET_SUSTAIN_AMT       => write_strobe(sustain_amt_reg,    m_axi_wdata, m_axi_wstrb);
-                when OFFSET_RELEASE_LENGTH    => write_strobe(release_length_reg, m_axi_wdata, m_axi_wstrb);
-                when OFFSET_WRAPBACK_REG      => write_strobe(wrapback_reg,       m_axi_wdata, m_axi_wstrb);
+                when OFFSET_PULSE_WIDTH_REG  => write_strobe(pulse_width_reg,    m_axi_wdata, m_axi_wstrb);
+                when OFFSET_PULSE_REG        => write_strobe(pulse_reg,          m_axi_wdata, m_axi_wstrb);
+                when OFFSET_RAMP_REG         => write_strobe(ramp_reg,           m_axi_wdata, m_axi_wstrb);
+                when OFFSET_SAW_REG          => write_strobe(saw_reg,            m_axi_wdata, m_axi_wstrb);
+                when OFFSET_TRI_REG          => write_strobe(tri_reg,            m_axi_wdata, m_axi_wstrb);
+                when OFFSET_SINE_REG         => write_strobe(sine_reg,           m_axi_wdata, m_axi_wstrb);
+                when OFFSET_GAIN_SCALE_REG   => write_strobe(out_amp_reg,        m_axi_wdata, m_axi_wstrb);
+                when OFFSET_GAIN_SHIFT_REG   => write_strobe(out_shift_reg,      m_axi_wdata, m_axi_wstrb);
+                when OFFSET_ATTACK_LENGTH    => write_strobe(attack_length_reg,  m_axi_wdata, m_axi_wstrb);
+                when OFFSET_DECAY_LENGTH     => write_strobe(decay_length_reg,   m_axi_wdata, m_axi_wstrb);
+                when OFFSET_SUSTAIN_AMT      => write_strobe(sustain_amt_reg,    m_axi_wdata, m_axi_wstrb);
+                when OFFSET_RELEASE_LENGTH   => write_strobe(release_length_reg, m_axi_wdata, m_axi_wstrb);
+                when OFFSET_WRAPBACK_REG     => write_strobe(wrapback_reg,       m_axi_wdata, m_axi_wstrb);
                 
                 when others =>
+
                   pulse_width_reg    <= pulse_width_reg;
                   pulse_reg          <= pulse_reg;
                   ramp_reg           <= ramp_reg;
@@ -464,14 +452,28 @@ begin
                   sine_reg           <= sine_reg;
                   out_amp_reg        <= out_amp_reg;
                   out_shift_reg      <= out_shift_reg;
-                  attack_steps_int   <= attack_steps_int;
-                  decay_steps_int    <= decay_steps_int;
-                  release_steps_int  <= release_steps_int;
                   attack_length_reg  <= attack_length_reg;
                   decay_length_reg   <= decay_length_reg;
                   sustain_amt_reg    <= sustain_amt_reg;
                   release_length_reg <= release_length_reg;
                   wrapback_reg       <= wrapback_reg;
+
+                  if (mem_logic(mem_logic'high-2 downto ADDR_LSB) >= OFFSET_ATTACK_STEP
+                      and mem_logic(mem_logic'high-2 downto ADDR_LSB) < OFFSET_DECAY_STEP) then
+                    write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
+                    attack_steps_int(array_addr-to_integer(unsigned(OFFSET_ATTACK_STEP))) <= unsigned(temp(WIDTH_ADSR_COUNT-1 downto 0));
+                  
+                  elsif (mem_logic(mem_logic'high-2 downto ADDR_LSB) >= OFFSET_DECAY_STEP
+                      and mem_logic(mem_logic'high-2 downto ADDR_LSB) < OFFSET_RELEASE_STEP) then
+                    write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
+                    decay_steps_int(array_addr-to_integer(unsigned(OFFSET_DECAY_STEP))) <= unsigned(temp(WIDTH_ADSR_COUNT-1 downto 0));
+                
+                  elsif (mem_logic(mem_logic'high-2 downto ADDR_LSB) >= OFFSET_RELEASE_STEP
+                      and mem_logic(mem_logic'high-2 downto ADDR_LSB) < OFFSET_ATTACK_LENGTH) then
+                    write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
+                    release_steps_int(array_addr-to_integer(unsigned(OFFSET_RELEASE_STEP))) <= unsigned(temp(WIDTH_ADSR_COUNT-1 downto 0));
+                  
+                  end if;
               
               end case;
             

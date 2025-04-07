@@ -1,4 +1,5 @@
 # Ignore DVT VSCode extension files
+*.vscode/
 .dvt/
 dvt*
 
