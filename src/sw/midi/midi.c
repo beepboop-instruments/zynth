@@ -327,40 +327,68 @@ int MidiControlChange(u8 Ch) {
       * value (0-127).
       */
 
-    case 41:
+    case 21:
      /* Set sine wave amplitude
       */
       setWaveAmp(SINE_WAVE, value >> 2);
       return XST_SUCCESS;
 
-    case 42:
+    case 22:
      /* Set triangle wave amplitude
       */
       setWaveAmp(TRI_WAVE, value >> 2);
       return XST_SUCCESS;
 
-    case 43:
+    case 23:
      /* Set saw wave amplitude
       */
       setWaveAmp(SAW_WAVE, value >> 2);
       return XST_SUCCESS;
 
-    case 44:
+    case 24:
      /* Set ramp wave amplitude
       */
       setWaveAmp(RAMP_WAVE, value >> 2);
       return XST_SUCCESS;
 
-    case 45:
+    case 25:
      /* Set pulse wave amplitude
       */
       setWaveAmp(PULSE_WAVE, value >> 2);
       return XST_SUCCESS;
 
-    case 46:
+    case 26:
      /* Set pulse wave width
       */
       setPulseWidth(value << 9);
+      return XST_SUCCESS;
+
+    case 41:
+     /* Set attack length
+      */
+      adsr_settings.attack_length = value << 6;
+      setADSR();
+      return XST_SUCCESS;
+
+    case 42:
+      /* Set decay length
+      */
+      adsr_settings.decay_length = value << 6;
+      setADSR();
+      return XST_SUCCESS;
+
+    case 43:
+      /* Set sustain amount
+      */
+      adsr_settings.sustain_amt = value << 9;
+      setADSR();
+      return XST_SUCCESS;
+
+    case 44:
+      /* Set release length
+      */
+      adsr_settings.release_length = value << 6;
+      setADSR();
       return XST_SUCCESS;
 
     default:

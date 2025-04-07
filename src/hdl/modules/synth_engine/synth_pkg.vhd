@@ -29,11 +29,9 @@ package synth_pkg is
   constant OFFSET_GAIN_SCALE_REG  : std_logic_vector := "0001001"; --  17
   constant OFFSET_ATTACK_STEP     : std_logic_vector := "0100000"; --  32
   constant OFFSET_DECAY_STEP      : std_logic_vector := "0101000"; --  40
-  constant OFFSET_RELEASE_STEP    : std_logic_vector := "0110000"; --  48
-  constant OFFSET_ATTACK_LENGTH   : std_logic_vector := "0111000"; --  56
-  constant OFFSET_DECAY_LENGTH    : std_logic_vector := "0111001"; --  57
-  constant OFFSET_SUSTAIN_AMT     : std_logic_vector := "0111010"; --  58
-  constant OFFSET_RELEASE_LENGTH  : std_logic_vector := "0111011"; --  59
+  constant OFFSET_SUSTAIN_LEVEL   : std_logic_vector := "0110000"; --  48
+  constant OFFSET_RELEASE_STEP    : std_logic_vector := "0111000"; --  56
+  constant OFFSET_ADSR_END        : std_logic_vector := "1000000"; --  64
   constant OFFSET_REV_REG         : std_logic_vector := "1111000"; -- 120
   constant OFFSET_DATE_REG        : std_logic_vector := "1111001"; -- 121
   constant OFFSET_WRAPBACK_REG    : std_logic_vector := "1111111"; -- 127

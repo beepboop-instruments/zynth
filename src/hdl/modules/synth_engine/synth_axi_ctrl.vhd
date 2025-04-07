@@ -38,12 +38,9 @@ entity synth_axi_ctrl is
     out_amp         : out unsigned(WIDTH_OUT_GAIN-1 downto 0);
     out_shift       : out unsigned(WIDTH_OUT_SHIFT-1 downto 0);
     pulse_width     : out unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
-    attack_length   : out unsigned(WIDTH_ADSR_COUNT-1 downto 0);
-    decay_length    : out unsigned(WIDTH_ADSR_COUNT-1 downto 0);
-    sustain_amt     : out unsigned(WIDTH_ADSR_COUNT-1 downto 0);
-    release_length  : out unsigned(WIDTH_ADSR_COUNT-1 downto 0);
     attack_steps    : out t_adsr;
     decay_steps     : out t_adsr;
+    sustain_levels  : out t_adsr;
     release_steps   : out t_adsr;
 
     -- Global Clock Signal
@@ -205,7 +202,8 @@ architecture arch_imp of synth_axi_ctrl is
   -- adsr arrays
   signal  attack_steps_int,
           decay_steps_int,
-          release_steps_int  : t_adsr;
+          sustain_levels_int,
+          release_steps_int    : t_adsr;
 
   -- memory-mapped registers
   signal  pulse_width_reg,
@@ -216,11 +214,7 @@ architecture arch_imp of synth_axi_ctrl is
           sine_reg,
           out_amp_reg,
           out_shift_reg,
-          wrapback_reg,
-          attack_length_reg,
-          decay_length_reg,
-          sustain_amt_reg,
-          release_length_reg  : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+          wrapback_reg   : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
 
   -- address indexing signals
   signal byte_index  : integer;
@@ -244,11 +238,12 @@ begin
 
   rst_n <= not(rst);
   -- output port assignements
-  note_amps     <= note_amps_int;
-  ph_inc_table  <= ph_inc_table_int;
-  attack_steps  <= attack_steps_int;
-  decay_steps   <= decay_steps_int;
-  release_steps <= release_steps_int;
+  note_amps      <= note_amps_int;
+  ph_inc_table   <= ph_inc_table_int;
+  attack_steps   <= attack_steps_int;
+  decay_steps    <= decay_steps_int;
+  sustain_levels <= sustain_levels_int;
+  release_steps  <= release_steps_int;
 
   wfrm_amps(I_PULSE) <= unsigned(pulse_reg(WIDTH_WAVE_GAIN-1 downto 0));
   wfrm_amps(I_RAMP)  <= unsigned(ramp_reg(WIDTH_WAVE_GAIN-1 downto 0));
@@ -266,11 +261,6 @@ begin
 
   out_amp   <= unsigned(out_amp_reg(WIDTH_OUT_GAIN-1 downto 0));
   out_shift <= unsigned(out_shift_reg(WIDTH_OUT_SHIFT-1 downto 0));
-
-  attack_length   <= unsigned(attack_length_reg(WIDTH_ADSR_COUNT-1 downto 0));
-  decay_length    <= unsigned(decay_length_reg(WIDTH_ADSR_COUNT-1 downto 0));
-  sustain_amt     <= unsigned(sustain_amt_reg(WIDTH_ADSR_COUNT-1 downto 0));
-  release_length  <= unsigned(release_length_reg(WIDTH_ADSR_COUNT-1 downto 0));
 
   m_axi_awready <= axi_awready;
   m_axi_wready  <= axi_wready;
@@ -407,15 +397,12 @@ begin
         sine_reg           <= (others => '0');
         out_amp_reg        <= (others => '0');
         out_shift_reg      <= (others => '0');
-        attack_length_reg  <= (others => '0');
-        decay_length_reg   <= (others => '0');
-        sustain_amt_reg    <= (others => '0');
-        release_length_reg <= (others => '0');
         wrapback_reg       <= (others => '0');
         note_amps_int      <= (others => (others => '0'));
         ph_inc_table_int   <= ph_inc_lut;
         attack_steps_int   <= (others => (others => '0'));
         decay_steps_int    <= (others => (others => '0'));
+        sustain_levels_int <= (others => (others => '0'));
         release_steps_int  <= (others => (others => '0'));
       else
         if (m_axi_wvalid = '1') then
@@ -436,10 +423,6 @@ begin
                 when OFFSET_SINE_REG         => write_strobe(sine_reg,           m_axi_wdata, m_axi_wstrb);
                 when OFFSET_GAIN_SCALE_REG   => write_strobe(out_amp_reg,        m_axi_wdata, m_axi_wstrb);
                 when OFFSET_GAIN_SHIFT_REG   => write_strobe(out_shift_reg,      m_axi_wdata, m_axi_wstrb);
-                when OFFSET_ATTACK_LENGTH    => write_strobe(attack_length_reg,  m_axi_wdata, m_axi_wstrb);
-                when OFFSET_DECAY_LENGTH     => write_strobe(decay_length_reg,   m_axi_wdata, m_axi_wstrb);
-                when OFFSET_SUSTAIN_AMT      => write_strobe(sustain_amt_reg,    m_axi_wdata, m_axi_wstrb);
-                when OFFSET_RELEASE_LENGTH   => write_strobe(release_length_reg, m_axi_wdata, m_axi_wstrb);
                 when OFFSET_WRAPBACK_REG     => write_strobe(wrapback_reg,       m_axi_wdata, m_axi_wstrb);
                 
                 when others =>
@@ -452,10 +435,6 @@ begin
                   sine_reg           <= sine_reg;
                   out_amp_reg        <= out_amp_reg;
                   out_shift_reg      <= out_shift_reg;
-                  attack_length_reg  <= attack_length_reg;
-                  decay_length_reg   <= decay_length_reg;
-                  sustain_amt_reg    <= sustain_amt_reg;
-                  release_length_reg <= release_length_reg;
                   wrapback_reg       <= wrapback_reg;
 
                   if (mem_logic(mem_logic'high-2 downto ADDR_LSB) >= OFFSET_ATTACK_STEP
@@ -464,12 +443,17 @@ begin
                     attack_steps_int(array_addr-to_integer(unsigned(OFFSET_ATTACK_STEP))) <= unsigned(temp(WIDTH_ADSR_COUNT-1 downto 0));
                   
                   elsif (mem_logic(mem_logic'high-2 downto ADDR_LSB) >= OFFSET_DECAY_STEP
-                      and mem_logic(mem_logic'high-2 downto ADDR_LSB) < OFFSET_RELEASE_STEP) then
+                      and mem_logic(mem_logic'high-2 downto ADDR_LSB) < OFFSET_SUSTAIN_LEVEL) then
                     write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
                     decay_steps_int(array_addr-to_integer(unsigned(OFFSET_DECAY_STEP))) <= unsigned(temp(WIDTH_ADSR_COUNT-1 downto 0));
+                  
+                  elsif (mem_logic(mem_logic'high-2 downto ADDR_LSB) >= OFFSET_SUSTAIN_LEVEL
+                      and mem_logic(mem_logic'high-2 downto ADDR_LSB) < OFFSET_RELEASE_STEP) then
+                    write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
+                    sustain_levels_int(array_addr-to_integer(unsigned(OFFSET_SUSTAIN_LEVEL))) <= unsigned(temp(WIDTH_ADSR_COUNT-1 downto 0));
                 
                   elsif (mem_logic(mem_logic'high-2 downto ADDR_LSB) >= OFFSET_RELEASE_STEP
-                      and mem_logic(mem_logic'high-2 downto ADDR_LSB) < OFFSET_ATTACK_LENGTH) then
+                      and mem_logic(mem_logic'high-2 downto ADDR_LSB) < OFFSET_ADSR_END) then
                     write_strobe_array(temp, m_axi_wdata, m_axi_wstrb);
                     release_steps_int(array_addr-to_integer(unsigned(OFFSET_RELEASE_STEP))) <= unsigned(temp(WIDTH_ADSR_COUNT-1 downto 0));
                   
@@ -551,10 +535,7 @@ begin
     out_amp_reg        when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_GAIN_SCALE_REG    ) else
     out_shift_reg      when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_GAIN_SHIFT_REG    ) else
     -- read from adsr settings
-    attack_length_reg  when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_ATTACK_LENGTH     ) else 
-    decay_length_reg   when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_DECAY_LENGTH      ) else 
-    sustain_amt_reg    when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_SUSTAIN_AMT       ) else 
-    release_length_reg when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_RELEASE_LENGTH    ) else 
+
     -- read from info registers
     SYNTH_ENG_REV      when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_REV_REG           ) else 
     SYNTH_ENG_DATE     when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_DATE_REG          ) else 
