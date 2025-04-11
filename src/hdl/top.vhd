@@ -110,7 +110,8 @@ end top;
         M03_AXI_0_rvalid : in STD_LOGIC;
         M03_AXI_0_rready : out STD_LOGIC;
         FCLK_CLK0 : out STD_LOGIC;
-        FCLK_RESET0_N : out STD_LOGIC
+        FCLK_RESET0_N : out STD_LOGIC;
+        fab_clk        : in std_logic
       );
       end component ps;
 
@@ -216,8 +217,9 @@ end top;
     signal rst100   : std_logic;
     signal rst100_n : std_logic;
     
-    signal clk12p288 : std_logic;
-    signal rst12p288  : std_logic;
+    signal clk12p288   : std_logic;
+    signal rst12p288   : std_logic;
+    signal rst12p288_n : std_logic;
     
     signal audio_data : std_logic_vector(23 downto 0);
     
@@ -259,7 +261,8 @@ end top;
       
   begin
   
-  rst100 <= not(rst100_n);
+  rst100      <= not(rst100_n);
+  rst12p288_n <= not(rst12p288);
   
   ps_i: component ps
     port map (
@@ -315,7 +318,8 @@ end top;
       M03_AXI_0_rdata   => rdata,
       M03_AXI_0_rresp   => rresp,
       M03_AXI_0_rvalid  => rvalid,
-      M03_AXI_0_rready  => rready
+      M03_AXI_0_rready  => rready,
+      fab_clk           => clk12p288
     );
 
   iic_scl_iobuf: component IOBUF
@@ -348,8 +352,8 @@ end top;
       -- AXI control interface
       clk           => clk12p288,
       rst           => rst12p288,
-      s_axi_aclk    => clk100,
-      s_axi_aresetn => rst100_n,
+      s_axi_aclk    => clk12p288,
+      s_axi_aresetn => rst12p288_n,
       s_axi_awaddr  => awaddr,
       s_axi_awprot  => awprot,
       s_axi_awvalid => awvalid,

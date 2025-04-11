@@ -47,26 +47,14 @@ typedef uint8_t wave_type;
 #define OFFSET_SINE_REG        0x214
 #define OFFSET_GAIN_SHIFT_REG  0x220
 #define OFFSET_GAIN_SCALE_REG  0x224
-#define OFFSET_ATTACK_STEP     0x280
-#define OFFSET_DECAY_STEP      0x2A0
-#define OFFSET_SUSTAIN_LEVEL   0x2C0
-#define OFFSET_RELEASE_STEP    0x2E0
+#define OFFSET_ATTACK_AMT      0x280
+#define OFFSET_DECAY_AMT       0x284
+#define OFFSET_SUSTAIN_AMT     0x288
+#define OFFSET_RELEASE_AMT     0x28C
 #define OFFSET_REV_REG         0x3E0
 #define OFFSET_DATE_REG        0x3E4
 #define OFFSET_WRAPBACK_REG    0x3FC
 #define OFFSET_PITCH_REG       0x400
-
-typedef struct {
-  u16 attack_lut[7];
-  u16 decay_lut[7];
-  u16 release_lut[7];
-  u16 attack_length;
-  u16 decay_length;
-  u16 sustain_amt;
-  u16 release_length;
-} adsr_t;
-
-extern adsr_t adsr_settings;
 
 /***************************************************************************
 * Helper macros
@@ -81,9 +69,10 @@ extern adsr_t adsr_settings;
 #define setPulseWidth(width)        synthWrite(OFFSET_PULSE_WIDTH_REG, width)
 #define setWaveAmp(wave_form, amp)  synthWrite(0x200 + 4*wave_form, amp)
 #define setWavePh(wave_form, phase) synthWrite(0x200 + 4*wave_form, phase)
-#define setAttackLength(length)     synthWrite(OFFSET_ATTACK_LENGTH, length)
-#define setDecayLength(length)      synthWrite(OFFSET_DECAY_LENGTH, length)
-#define setReleaseLength(length)    synthWrite(OFFSET_RELEASE_LENGTH, length)
+#define setAttack(amt)              synthWrite(OFFSET_ATTACK_AMT, amt)
+#define setDecay(amt)               synthWrite(OFFSET_DECAY_AMT, amt)
+#define setSustain(amt)             synthWrite(OFFSET_SUSTAIN_AMT, amt)
+#define setRelease(amt)             synthWrite(OFFSET_RELEASE_AMT, amt)
 #define setOutAmp(amp)              synthWrite(OFFSET_GAIN_SCALE_REG, amp)
 #define setOutShift(shift_amt)      synthWrite(OFFSET_GAIN_SHIFT_REG, shift_amt)
 #define setWrapback(data)           synthWrite(OFFSET_WRAPBACK_REG, data)
@@ -101,6 +90,6 @@ int checkSynthCtrl(void);
 int readSynthCtrl(void);
 void generate_step_table(uint16_t duration_ms, uint16_t amplitude_start, uint16_t amplitude_end, uint16_t table[7]);
 int initADSR(void);
-int setADSR(void);
+u32 calcADSRamt(u8 midi_cc);
 
 #endif /* SYNTH_CTRL_H */

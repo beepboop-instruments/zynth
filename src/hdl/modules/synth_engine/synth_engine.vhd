@@ -81,10 +81,10 @@ architecture struct_synth_engine of synth_engine is
       out_amp        : out unsigned(WIDTH_OUT_GAIN-1 downto 0);
       out_shift      : out unsigned(WIDTH_OUT_SHIFT-1 downto 0);
       pulse_width    : out unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
-      attack_steps   : out t_adsr;
-      decay_steps    : out t_adsr;
-      sustain_levels : out t_adsr;
-      release_steps  : out t_adsr;
+      attack_amt     : out unsigned(WIDTH_ADSR_CC-1 downto 0);
+      decay_amt      : out unsigned(WIDTH_ADSR_CC-1 downto 0);
+      sustain_amt    : out unsigned(WIDTH_ADSR_CC-1 downto 0);
+      release_amt    : out unsigned(WIDTH_ADSR_CC-1 downto 0);
 
       -- AXI control interface
       s_axi_aclk     : in  std_logic;
@@ -161,16 +161,17 @@ architecture struct_synth_engine of synth_engine is
     generic (
       NOTE_GAIN_WIDTH : integer := WIDTH_NOTE_GAIN;
       DATA_WIDTH      : natural := WIDTH_WAVE_DATA;
+      ADSR_WIDTH      : natural := WIDTH_ADSR_CC;
       ACC_WIDTH       : natural := WIDTH_ADSR_COUNT
     );
     port (
       clk             : in  std_logic;
       rst             : in  std_logic;
       -- synth controls
-      attack_steps    : in  t_adsr;
-      decay_steps     : in  t_adsr;
-      sustain_levels  : in  t_adsr;
-      release_steps   : in  t_adsr;
+      attack_amt      : in  unsigned(ADSR_WIDTH-1 downto 0);
+      decay_amt       : in  unsigned(ADSR_WIDTH-1 downto 0);
+      sustain_amt     : in  unsigned(ADSR_WIDTH-1 downto 0);
+      release_amt     : in  unsigned(ADSR_WIDTH-1 downto 0);
       -- pipeline in
       note_index_in   : in  integer range I_LOWEST_NOTE to I_HIGHEST_NOTE;
       note_amp_in     : in  unsigned(NOTE_GAIN_WIDTH-1 downto 0);
@@ -233,10 +234,10 @@ architecture struct_synth_engine of synth_engine is
   signal out_amp         : unsigned(WIDTH_OUT_GAIN-1 downto 0);
   signal out_shift       : unsigned(WIDTH_OUT_SHIFT-1 downto 0);
   signal pulse_width     : unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
-  signal attack_steps    : t_adsr;
-  signal decay_steps     : t_adsr;
-  signal sustain_levels  : t_adsr;
-  signal release_steps   : t_adsr;
+  signal  attack_amt,
+          decay_amt,
+          sustain_amt,
+          release_amt   : unsigned(WIDTH_ADSR_CC-1 downto 0);
 
 begin
 
@@ -261,10 +262,10 @@ begin
       out_amp         => out_amp,
       out_shift       => out_shift,
       pulse_width     => pulse_width,
-      attack_steps    => attack_steps,
-      decay_steps     => decay_steps,
-      sustain_levels  => sustain_levels,
-      release_steps   => release_steps,
+      attack_amt      => attack_amt,
+      decay_amt       => decay_amt,
+      sustain_amt     => sustain_amt,
+      release_amt     => release_amt,
 
       -- AXI control interface
       s_axi_aclk    => s_axi_aclk,
@@ -338,16 +339,17 @@ begin
     generic map(
       NOTE_GAIN_WIDTH => WIDTH_NOTE_GAIN,
       DATA_WIDTH      => WIDTH_WAVE_DATA,
+      ADSR_WIDTH      => WIDTH_ADSR_CC,
       ACC_WIDTH       => WIDTH_ADSR_COUNT
     )
     port map (
       clk             => clk,
       rst             => rst,
       -- synth controls
-      attack_steps    => attack_steps,
-      decay_steps     => decay_steps,
-      sustain_levels  => sustain_levels,
-      release_steps   => release_steps,
+      attack_amt      => attack_amt,
+      decay_amt       => decay_amt,
+      sustain_amt     => sustain_amt,
+      release_amt     => release_amt,
       -- pipeline in
       note_index_in   => note_index_q2,
       note_amp_in     => note_amp_q2,

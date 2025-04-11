@@ -27,11 +27,10 @@ package synth_pkg is
   constant OFFSET_SINE_REG        : std_logic_vector := "0000101"; --   5
   constant OFFSET_GAIN_SHIFT_REG  : std_logic_vector := "0001000"; --  16
   constant OFFSET_GAIN_SCALE_REG  : std_logic_vector := "0001001"; --  17
-  constant OFFSET_ATTACK_STEP     : std_logic_vector := "0100000"; --  32
-  constant OFFSET_DECAY_STEP      : std_logic_vector := "0101000"; --  40
-  constant OFFSET_SUSTAIN_LEVEL   : std_logic_vector := "0110000"; --  48
-  constant OFFSET_RELEASE_STEP    : std_logic_vector := "0111000"; --  56
-  constant OFFSET_ADSR_END        : std_logic_vector := "1000000"; --  64
+  constant OFFSET_ATTACK_AMT      : std_logic_vector := "0100000"; --  32
+  constant OFFSET_DECAY_AMT       : std_logic_vector := "0100001"; --  33
+  constant OFFSET_SUSTAIN_AMT     : std_logic_vector := "0100010"; --  34
+  constant OFFSET_RELEASE_AMT     : std_logic_vector := "0100011"; --  35
   constant OFFSET_REV_REG         : std_logic_vector := "1111000"; -- 120
   constant OFFSET_DATE_REG        : std_logic_vector := "1111001"; -- 121
   constant OFFSET_WRAPBACK_REG    : std_logic_vector := "1111111"; -- 127
@@ -44,7 +43,8 @@ package synth_pkg is
   constant WIDTH_OUT_GAIN    : natural := 7;
   constant WIDTH_OUT_SHIFT   : natural := 5;
   constant WIDTH_PULSE_WIDTH : natural := 16;
-  constant WIDTH_ADSR_COUNT  : natural := 16;
+  constant WIDTH_ADSR_COUNT  : natural := 20;
+  constant WIDTH_ADSR_CC     : natural := 20;
 
   constant NUM_WFRMS       : natural := 5;
   constant NUM_NOTES       : natural := 128;

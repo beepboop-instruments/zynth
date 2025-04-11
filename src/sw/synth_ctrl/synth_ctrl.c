@@ -20,8 +20,6 @@
 #include "synth_ctrl.h"
 #include "../utils/utils.h"
 
-adsr_t adsr_settings;
-
 /***************************************************************************
 * Initialize synthesizer controller
 ****************************************************************************/
@@ -41,47 +39,30 @@ int initSynth(void) {
 ****************************************************************************/
 
 int initADSR(void) {
-  adsr_settings.attack_length  = 100;
-  adsr_settings.decay_length   = 100;
-  adsr_settings.sustain_amt    = 0x7FFF;
-  adsr_settings.release_length = 500;
+  setAttack(calcADSRamt(0));
+  setDecay(calcADSRamt(0));
+  setSustain(0xFFFFF);
+  setRelease(calcADSRamt(0));
 
-  return setADSR();
+  return XST_SUCCESS;
 }
 
 /***************************************************************************
-* Generate ADSR step tables
+* Calculate adsr exponential settings
 ****************************************************************************/
 
-void generate_step_table(uint16_t duration_ms, uint16_t amplitude_start, uint16_t amplitude_end, uint16_t table[7]) {
-  uint32_t samples = duration_ms * SAMPLE_RATE / 1000;
-  if (samples == 0) samples = 1;  // avoid div-by-zero
+// Map midi_cc (0-127) to a value in range [2, 0xFFFFF] approximately
+u32 calcADSRamt(u8 midi_cc) {
+  // Avoid division by zero
+  if (midi_cc > 127) midi_cc = 127;
 
-  int32_t delta = (int32_t)amplitude_end - (int32_t)amplitude_start;
-  double base_step = (double)abs(delta) / samples;
+  // Use exponential mapping: output = A * exp(-k * midi_cc)
+  // Coefficients chosen to approximate the desired values
+  double A = 0xFFFFF;
+  double k = log((double)A / 8.0) / 127.0;
 
-  for (int i = 0; i < 7; ++i) {
-    uint8_t weight = 1 << i; // 1, 2, 4, 8, ..., 64
-    table[i] = (uint16_t)floor((weight / 127.0) * base_step);
-  }
-}
-
-int setADSR(void) {
-  generate_step_table(adsr_settings.attack_length, 0, MAX_AMPLITUDE, adsr_settings.attack_lut);
-  generate_step_table(adsr_settings.decay_length, MAX_AMPLITUDE, adsr_settings.sustain_amt, adsr_settings.decay_lut);
-  generate_step_table(adsr_settings.release_length, adsr_settings.sustain_amt, 0, adsr_settings.release_lut);
-
-  for (u8 i = 0; i < 7; i++) {
-    synthWrite(OFFSET_ATTACK_STEP+i*4, adsr_settings.attack_lut[i]);
-    synthWrite(OFFSET_DECAY_STEP+i*4, adsr_settings.decay_lut[i]);
-    synthWrite(OFFSET_RELEASE_STEP+i*4, adsr_settings.release_lut[i]);
-  }
-
-  setAttackLength(adsr_settings.attack_length);
-  setDecayLength(adsr_settings.decay_length);
-  setReleaseLength(adsr_settings.release_length);
-
-  return XST_SUCCESS;
+  double result = A * exp(-k * midi_cc);
+  return (u32)(result + 0.5); // round to nearest
 }
 
 /***************************************************************************

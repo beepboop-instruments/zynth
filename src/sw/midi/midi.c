@@ -366,29 +366,25 @@ int MidiControlChange(u8 Ch) {
     case 41:
      /* Set attack length
       */
-      adsr_settings.attack_length = value << 6;
-      setADSR();
+      setAttack(calcADSRamt(value));
       return XST_SUCCESS;
 
     case 42:
       /* Set decay length
       */
-      adsr_settings.decay_length = value << 6;
-      setADSR();
+      setDecay(calcADSRamt(value));
       return XST_SUCCESS;
 
     case 43:
       /* Set sustain amount
       */
-      adsr_settings.sustain_amt = value << 9;
-      setADSR();
+      setSustain(value << 12);
       return XST_SUCCESS;
 
     case 44:
       /* Set release length
       */
-      adsr_settings.release_length = value << 6;
-      setADSR();
+      setRelease(calcADSRamt(value));
       return XST_SUCCESS;
 
     default:
