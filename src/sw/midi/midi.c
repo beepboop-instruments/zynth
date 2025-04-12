@@ -16,14 +16,20 @@
 *
 ****************************************************************************/
 
+#include "xinterrupt_wrap.h"
+
 #include "midi.h"
 #include "pitch.h"
 #include <xstatus.h>
+#include <xuartps.h>
 
 XUartPs MidiPs; /* The instance of the UART Driver */
 u8 MidiBuffer[MIDI_BUFFER_SIZE];	/* MIDI receive buffer */
 const char *midi_note_names[] = MIDI_NOTE_NAMES;
 u32 FreqWords[128];
+
+RingBuffer midi_rb = { .head = 0, .tail = 0 };
+MidiParser midi_parser = {0};
 
 /***************************************************************************
 * Reset frequency word array back to defaults
@@ -41,6 +47,47 @@ void writeFreqWords(void) {
     setPitch(i, FreqWords[i]);
   }
   return;    
+}
+
+/***************************************************************************
+* MIDI ring buffer
+****************************************************************************/
+
+int rb_is_empty(RingBuffer *rb) {
+    return rb->head == rb->tail;
+}
+
+int rb_is_full(RingBuffer *rb) {
+    return ((rb->head + 1) % MIDI_BUFFER_SIZE) == rb->tail;
+}
+
+int rb_free_space(RingBuffer *rb) {
+    if (rb->head >= rb->tail) {
+        return MIDI_BUFFER_SIZE - (rb->head - rb->tail) - 1;
+    } else {
+        return (rb->tail - rb->head - 1);
+    }
+}
+
+void rb_push(RingBuffer *rb, u8 byte) {
+    if (!rb_is_full(rb)) {
+        rb->data[rb->head] = byte;
+        rb->head = (rb->head + 1) % MIDI_BUFFER_SIZE;
+    } else if (rb_free_space(&midi_rb) < 4) {
+    debug_print("Warning: MIDI buffer almost full.\r\n");
+    } else {
+        // optional: handle overflow (log or drop)
+        debug_print("Critical Warning!: MIDI ring buffer overflow.\r\n");
+    }
+}
+
+u8 rb_pop(RingBuffer *rb) {
+  u8 byte = 0;
+  if (!rb_is_empty(rb)) {
+    byte = rb->data[rb->tail];
+    rb->tail = (rb->tail + 1) % MIDI_BUFFER_SIZE;
+  }
+  return byte;
 }
 
 /***************************************************************************
@@ -81,45 +128,194 @@ int configMidi(u32 BaseAddress)
 		return XST_FAILURE;
 	}
 
-    if (XUartPs_CfgInitialize(&MidiPs, Config, Config->BaseAddress)) {
-		return XST_FAILURE;
-	}
-
-	// Check hardware build
-    if (XUartPs_SelfTest(&MidiPs)) {
+    // Initialize UART instance
+    if (XUartPs_CfgInitialize(&MidiPs, Config, Config->BaseAddress) != XST_SUCCESS) {
         return XST_FAILURE;
     }
-	// Set operate mode
-	XUartPs_SetOperMode(&MidiPs, XUARTPS_OPER_MODE_NORMAL);
-	// Set baud rate to 31.25 kHz midi standard
-	XUartPs_SetBaudRate(&MidiPs, 31250);
 
-	return XST_SUCCESS;
+    // Reset FIFOs immediately after init
+    XUartPs_SetOptions(&MidiPs, XUARTPS_OPTION_RESET_RX | XUARTPS_OPTION_RESET_TX);
+
+    // Self test (optional, can remove in final system)
+    if (XUartPs_SelfTest(&MidiPs) != XST_SUCCESS) {
+        return XST_FAILURE;
+    }
+
+    // Set baud rate explicitly (optional but may help)
+    XUartPs_SetBaudRate(&MidiPs, 31250);  // MIDI baud rate
+
+    // Set FIFO trigger level early
+    XUartPs_SetFifoThreshold(&MidiPs, 1);
+
+    // Setup ISR handler
+    XUartPs_SetHandler(&MidiPs, (XUartPs_Handler)Handler, &MidiPs);
+
+    // Enable interrupts after setting handler
+    u32 IntrMask = XUARTPS_IXR_RXFULL | XUARTPS_IXR_RXOVR |
+                   XUARTPS_IXR_TOUT | XUARTPS_IXR_PARITY |
+                   XUARTPS_IXR_FRAMING | XUARTPS_IXR_RXEMPTY;
+
+    XUartPs_SetInterruptMask(&MidiPs, IntrMask);
+
+    // Enable interrupt system (after interrupts are fully configured)
+    XSetupInterruptSystem(&MidiPs, &XUartPs_InterruptHandler,
+                          Config->IntrId, Config->IntrParent,
+                          XINTERRUPT_DEFAULT_PRIORITY);
+
+  return XST_SUCCESS;
+}
+
+/**************************************************************************/
+/**
+*
+* This function is the handler which performs processing to handle data events
+* from the device.  It is called from an interrupt context. so the amount of
+* processing should be minimal.
+*
+* This handler provides an example of how to handle data for the device and
+* is application specific.
+*
+* @param	CallBackRef contains a callback reference from the driver,
+*		in this case it is the instance pointer for the XUartPs driver.
+* @param	Event contains the specific kind of event that has occurred.
+* @param	EventData contains the number of bytes sent or received for sent
+*		and receive events.
+*
+* @return	None.
+*
+* @note		None.
+*
+***************************************************************************/
+void Handler(void *CallBackRef, u32 Event, unsigned int EventData)
+{
+    (void)CallBackRef; // not used
+
+	/* All of the data has been sent */
+	if (Event == XUARTPS_EVENT_SENT_DATA) {
+	}
+
+	/* All of the data has been received */
+	if (Event == XUARTPS_EVENT_RECV_DATA) {
+      while (XUartPs_IsReceiveData(MIDI_BASEADDR)) {
+        u8 byte;
+        XUartPs_Recv(&MidiPs, &byte, 1);
+        if (byte != SYS_CMD+SYS_CLK) {
+          rb_push(&midi_rb, byte);
+        }
+      }
+	}
+
+	/*
+	 * Data was received, but not the expected number of bytes, a
+	 * timeout just indicates the data stopped for 8 character times
+	 */
+	if (Event == XUARTPS_EVENT_RECV_TOUT) {
+      debug_print("XUARTPS_EVENT_RECV_TOUT!!\r\n");
+      debug_print("EventData=%d\r\n", EventData);
+	}
+
+	/*
+	 * Data was received with an error, keep the data but determine
+	 * what kind of errors occurred
+	 */
+	if (Event == XUARTPS_EVENT_RECV_ERROR) {
+      debug_print("XUARTPS_EVENT_RECV_ERROR!!\r\n");
+      debug_print("EventData=%d\r\n", EventData);
+      // clear PS UART buffer
+      while (XUartPs_IsReceiveData(MIDI_BASEADDR)) {
+        XUartPs_RecvByte(MIDI_BASEADDR);
+      }
+	}
+
+	/*
+	 * Data was received with an parity or frame or break error, keep the data
+	 * but determine what kind of errors occurred. Specific to Zynq Ultrascale+
+	 * MP.
+	 */
+	if (Event == XUARTPS_EVENT_PARE_FRAME_BRKE) {
+      debug_print("XUARTPS_EVENT_PARE_FRAME_BRKE!!\r\n");
+      debug_print("EventData=%d\r\n", EventData);
+	}
+
+	/*
+	 * Data was received with an overrun error, keep the data but determine
+	 * what kind of errors occurred. Specific to Zynq Ultrascale+ MP.
+	 */
+	if (Event == XUARTPS_EVENT_RECV_ORERR) {
+      debug_print("XUARTPS_EVENT_RECV_ORERR!!\r\n");
+      debug_print("EventData=%d\r\n", EventData);
+	}
 }
 
 /***************************************************************************/
 /**
-* This function writes a polls the UART recieve buffer until the specified
-* number of bytes is received.
-*
-* @param  numBytes contains the number of bytes that should be received.
+* This parses a received MIDI message.
 *
 * @return XST_SUCCESS or XST_FAILURE
 *
 * @note   None.
 *
 ****************************************************************************/
-void readMidi(int numBytes)
-{
-	int count = 0;
-	int rxTotal = 0;
-    
-    // TODO: add timeout if number of bytes expected aren't received in time
-	while (rxTotal < numBytes)
-	{
-		count = XUartPs_Recv(&MidiPs, MidiBuffer+rxTotal, numBytes-rxTotal);
-		rxTotal += count;
-	}
+int rxMidiMsg(void) {
+  while (!rb_is_empty(&midi_rb)) {
+    u8 byte = rb_pop(&midi_rb);
+
+    // Real-time system messages (0xF8–0xFF) can appear any time
+    if (byte >= 0xF8) {
+      // Optionally: handle or ignore
+      continue;
+    }
+
+    // Status byte
+    if (byte & 0x80) {
+      midi_parser.status = byte;
+      midi_parser.msg[0] = byte;
+      midi_parser.count = 1;
+
+      // Determine expected message length
+      switch (byte & 0xF0) {
+        case NOTE_OFF:
+        case NOTE_ON:
+        case POLY_PRESSURE:
+        case CONTROL_CHANGE:
+        case PITCH_BEND:
+          midi_parser.expected = 3;
+          break;
+        case PROG_CHANGE:
+        case CH_PRESSURE:
+          midi_parser.expected = 2;
+          break;
+        case SYS_CMD:
+          // Let the system handler figure it out
+          midi_parser.expected = 2;
+          break;
+        default:
+          midi_parser.expected = 1;
+          break;
+        }
+    } else {
+      // Data byte, running status
+      if (midi_parser.count == 0 && midi_parser.status == 0) {
+        // No running status available
+        continue;
+      }
+
+      if (midi_parser.count == 0) {
+        midi_parser.msg[0] = midi_parser.status;
+        midi_parser.count = 1;
+      }
+
+      midi_parser.msg[midi_parser.count++] = byte;
+
+      // Full message received
+      if (midi_parser.count >= midi_parser.expected) {
+        dispatchMidiMessage(midi_parser.msg, midi_parser.count);
+        midi_parser.count = 0;
+      }
+    }
+  }
+
+  return XST_SUCCESS;
 }
 
 /***************************************************************************/
@@ -131,86 +327,60 @@ void readMidi(int numBytes)
 * @note   None.
 *
 ****************************************************************************/
-int  rxMidiMsg()
-{
-	// Read uart rx buffer
-	XUartPs_Recv(&MidiPs, MidiBuffer, 1);
-	u8 cmd = (MidiBuffer[0] & 0xF0);
-	u8 ch  = (MidiBuffer[0] & 0x0F) + 1;
+void dispatchMidiMessage(u8 *msg, u8 len) {
+  u8 cmd = msg[0] & 0xF0;
+  u8 ch = (msg[0] & 0x0F) + 1;
 
-  int Status;
-
-	switch (cmd) {
-	  case NOTE_OFF:
-      Status = note_off(ch);
-		  break;
-	  case NOTE_ON:
-      Status = note_on(ch);
-		  break;
-	  case POLY_PRESSURE:
-      Status = MidiPolyPressure(ch);
-		  break;
-	  case CONTROL_CHANGE:
-      Status = MidiControlChange(ch);
-		  break;
-	  case PROG_CHANGE:
-      Status = MidiProgChange(ch);    
-		  break;
-	  case CH_PRESSURE:
-      Status = MidiChannelPressure(ch);
-		  break;
-	  case PITCH_BEND:
-      Status = MidiPitchBend(ch);
-		  break;
-    case SYS_CMD:
-      Status = MidiMsgSystemCommon(ch-1);
+  switch (cmd) {
+    case NOTE_ON:
+      if (len >= 3) {
+        debug_print("NOTE ON: ch %d, key %d, vel %d\r\n", ch, msg[1], msg[2]);
+        safePlayNote(msg[1], msg[2]);
+      }
       break;
-    default:
-      debug_print("midi message: 0x%02X\n\r", MidiBuffer[0]);
-      Status = XST_SUCCESS;
+
+    case NOTE_OFF:
+      if (len >= 3) {
+        debug_print("NOTE OFF: ch %d, key %d, vel %d\r\n", ch, msg[1], msg[2]);
+        safeStopNote(msg[1]);
+      }
       break;
-	}
 
-	return Status;
-}
+	case POLY_PRESSURE:
+      if (len >= 2) {
+        MidiPolyPressure(ch, msg[1], msg[2]);
+      }
+	  break;
 
-/***************************************************************************/
-/**
-* This function processes the MIDI Note On and MIDI Note Off messages.
-*
-* @param  Ch the MIDI channel specified in the message
-* @param  OnOff whether the note is on (=1) or off (=0)
-* 
-* @return XST_SUCCESS or XST_FAILURE
-*
-* @note   Note Off event:
-*         This message is sent when a note is released (ended). (kkkkkkk) is
-*         the key (note) number. (vvvvvvv) is the velocity.
-*
-*         Note On event:
-*         This message is sent when a note is depressed (start). (kkkkkkk) is
-*         the key (note) number. (vvvvvvv) is the velocity.
-*
-****************************************************************************/
-int MidiNoteOnOff(u8 Ch, u8 OnOff) {
+    case CONTROL_CHANGE:
+      if (len >= 3) {
+        MidiControlChange(ch, msg[1], msg[2]);
+      }
+      break;
+      
+    case PROG_CHANGE:
+      if (len >= 1) {
+        MidiProgChange(ch, msg[1]);
+      }
+      break;
+      
+	case CH_PRESSURE:
+      if (len >= 2) {
+        MidiChannelPressure(ch, msg[1]);
+      }
+	  break;
+      
+    case PITCH_BEND:
+      if (len >= 3) {
+        MidiPitchBend(ch, msg[1], msg[2]);
+      }
+      break;
 
-  char *s_onoff = OnOff ? "ON " : "OFF";
-    
-  // read the note and velocity
-  readMidi(2);
-  u8 key = MidiBuffer[0];
-  u8 vel = MidiBuffer[1];
-
-  // set the note on or off
-  if (OnOff) {
-    playNote(key, vel);
-  } else {
-    stopNote(key);
-  }
-
-  debug_print("midi %-2i note %-3s: %-4s %-3i \r\n", Ch, s_onoff, midi_note_names[key], vel);
-
-  return XST_SUCCESS;
+      // Handle other message types...
+      default:
+        debug_print("Unknown MIDI: %02X [%d bytes]\r\n", msg[0], len);
+        break;
+    }
 }
 
 /***************************************************************************/
@@ -226,12 +396,7 @@ int MidiNoteOnOff(u8 Ch, u8 OnOff) {
 *         the pressure value.
 *
 ****************************************************************************/
-int MidiPolyPressure(u8 Ch) {
-
-  // read the note and pressure
-  readMidi(2);
-  u8 key = MidiBuffer[0];
-  u8 value = MidiBuffer[1];
+int MidiPolyPressure(u8 Ch, u8 key, u8 value) {
 
   debug_print("midi %i polyphonic pressure: %s %03i \n\r", Ch, midi_note_names[key], value);
 
@@ -250,14 +415,9 @@ int MidiPolyPressure(u8 Ch) {
 *         include devices such as pedals and levers.
 *
 ****************************************************************************/
-int MidiControlChange(u8 Ch) {
+int MidiControlChange(u8 Ch, u8 control, u8 value) {
 
   char *change = 0;
-
-  // read note and value
-  readMidi(2);
-  u8 control = MidiBuffer[0];
-  u8 value = MidiBuffer[1];
 
   switch (control) {
     case ALL_SOUND_OFF:
@@ -327,41 +487,75 @@ int MidiControlChange(u8 Ch) {
       * value (0-127).
       */
 
-    case 41:
+    case CC_SINE_AMT:
      /* Set sine wave amplitude
       */
       setWaveAmp(SINE_WAVE, value >> 2);
-      return XST_SUCCESS;
+      change = "SINE AMT";
+      break;
 
-    case 42:
+    case CC_TRI_AMT:
      /* Set triangle wave amplitude
       */
       setWaveAmp(TRI_WAVE, value >> 2);
-      return XST_SUCCESS;
+      change = "TRI AMT";
+      break;
 
-    case 43:
+    case CC_SAW_AMT:
      /* Set saw wave amplitude
       */
       setWaveAmp(SAW_WAVE, value >> 2);
-      return XST_SUCCESS;
+      change = "SAW AMT";
+      break;
 
-    case 44:
+    case CC_RAMP_AMT:
      /* Set ramp wave amplitude
       */
       setWaveAmp(RAMP_WAVE, value >> 2);
-      return XST_SUCCESS;
+      change = "RAMP AMT";
+      break;
 
-    case 45:
+    case CC_PWM_AMT:
      /* Set pulse wave amplitude
       */
       setWaveAmp(PULSE_WAVE, value >> 2);
-      return XST_SUCCESS;
+      change = "PULSE AMT";
+      break;
 
-    case 46:
+    case CC_PWM_WIDTH:
      /* Set pulse wave width
       */
       setPulseWidth(value << 9);
-      return XST_SUCCESS;
+      change = "PULSE WIDTH";
+      break;
+
+    case CC_ATTACK_AMT:
+     /* Set attack length
+      */
+      setAttack(calcADSRamt(value));
+      change = "ATTACK AMT";
+      break;
+
+    case CC_DECAY_AMT:
+      /* Set decay length
+      */
+      setDecay(calcADSRamt(value));
+      change = "DECAY AMT";
+      break;
+
+    case CC_SUSTAIN_AMT:
+      /* Set sustain amount
+      */
+      setSustain(value << 13);
+      change = "SUSTAIN AMT";
+      break;
+
+    case CC_RELEASE_AMT:
+      /* Set release length
+      */
+      setRelease(calcADSRamt(value));
+      change = "RELEASE AMT";
+      break;
 
     default:
       debug_print("midi %i controller %i: %i.\r\n", Ch, control, value);
@@ -385,11 +579,7 @@ int MidiControlChange(u8 Ch) {
 *         (ppppppp) is the new program number.
 *
 ****************************************************************************/
-int MidiProgChange(u8 Ch) {
-
-  // read value    
-  readMidi(1);
-  u8 value = MidiBuffer[0];
+int MidiProgChange(u8 Ch, u8 value) {
 
   debug_print("midi %i program change: 0x%02X \n\r", Ch, value);
 
@@ -411,11 +601,7 @@ int MidiProgChange(u8 Ch) {
 *           keys). (vvvvvvv) is the pressure value.
 *
 ****************************************************************************/
-int MidiChannelPressure(u8 Ch) {
-    
-  // read value    
-  readMidi(1);
-  u8 value = MidiBuffer[0];
+int MidiChannelPressure(u8 Ch, u8 value) {
 
   debug_print("midi %i channel pressure: %03i \n\r", Ch, value);
 
@@ -438,142 +624,18 @@ int MidiChannelPressure(u8 Ch) {
 *         most significant 7 bits.
 *
 ****************************************************************************/
-int MidiPitchBend(u8 Ch) {
+int MidiPitchBend(u8 Ch, int lsb, int msb) {
     
-  // read pitch offset
-  readMidi(2);
-  int pitchBend = (MidiBuffer[1]<<7) + MidiBuffer[0];
+  int pitchBend = ((msb << 7) + lsb);
   double scale = get_pitch_bend_scale(pitchBend);
 
-  for (u8 i = 0; i < 128; i ++) {
+  for (u8 i = 116; i < 128; i ++) {
     FreqWords[i] = (u32)((double)(FreqWordDefaults[i]) * scale);
   }
 
   writeFreqWords();
 
   xil_printf("midi %i pitch bend: %i\n\r", Ch, pitchBend-8192);
-
-  return XST_SUCCESS;
-}
-
-/***************************************************************************/
-/**
-* This function processes the MIDI System Common messages.
-*
-* @param  Ch the MIDI channel specified in the message
-* 
-* @return XST_SUCCESS or XST_FAILURE
-*
-* @note   None.
-*
-****************************************************************************/
-int MidiMsgSystemCommon(u8 Cmd) {
-
-  switch(Cmd) {
-    case SYS_EXCL_START:
-     /* System Exclusive. This message type allows manufacturers to create
-      * their own messages (such as bulk dumps, patch parameters, and other
-      * non-spec data) and provides a mechanism for creating additional
-      * MIDI Specification messages. The Manufacturer’s ID code (assigned
-      * by MMA or AMEI) is either 1 byte (0iiiiiii) or 3 bytes
-      * (0iiiiiii 0iiiiiii 0iiiiiii). Two of the 1 Byte IDs are reserved
-      * for extensions called Universal Exclusive Messages, which are not
-      * manufacturer-specific. If a device recognizes the ID code as its own
-      * (or as a supported Universal message) it will listen to the rest of
-      * the message (0ddddddd). Otherwise, the message will be ignored.
-      * (Note: Only Real-Time messages may be interleaved with a System
-      * Exclusive.)
-      */
-      debug_print("midi System Exclusive:");
-      while (MidiBuffer[0] != SYS_EXCL_END) {
-        readMidi(1);
-        debug_print(" %02X", MidiBuffer[0]);
-      }          
-      debug_print("\n\r");
-      break;
-    
-    case SYS_QTR_FRAME:
-     /* MIDI Time Code Quarter Frame. Value = 0nnndddd.
-      * nnn = Message Type. dddd = Values.
-      */
-      readMidi(1);
-      u8 type = MidiBuffer[0]>>4;
-      u8 values = MidiBuffer[0] & 0x0F;
-      debug_print("midi time code quarter frame - type: %i, values: %i.\r\n", type, values);
-      break;
-    
-    case SYS_POS_PTR:
-     /* Song Position Pointer. This is an internal 14 bit register that
-      * holds the number of MIDI beats (1 beat= six MIDI clocks) since
-      * the start of the song. l is the LSB (0lllllll), m the MSB (0mmmmmmm).
-      */
-      readMidi(2);
-      int position = (MidiBuffer[1]<<7) + MidiBuffer[0];
-      debug_print("midi song position pointer: %i.\r\n", position);            
-      break;
-    
-    case SYS_SONG_SEL:
-     /* Song Select. The Song Select specifies which sequence or song is to be played.
-      */
-      readMidi(1);
-      u8 song = MidiBuffer[0];
-      debug_print("midi song select: %i.\r\n", song);
-      break;
-    
-    case SYS_TUNE:
-     /* Tune Request. Upon receiving a Tune Request, all analog synthesizers
-      * should tune their oscillators.
-      */
-      debug_print("midi tune request.\r\n");
-      break;
-
-    case SYS_CLK:
-     /* Timing Clock. Sent 24 times per quarter note when synchronization is required.
-      */
-      break;
-    
-    case SYS_START:
-     /* Timing Clock. Sent 24 times per quarter note when synchronization is required.
-      */
-      debug_print("midi start sequence.\r\n");
-      break;
-
-    case SYS_CONTINUE:
-     /* Continue. Continue at the point the sequence was Stopped.
-      */
-      debug_print("midi continue sequence.\r\n");
-      break;
-
-    case SYS_STOP:
-     /* Stop. Stop the current sequence.
-      */
-      debug_print("midi stop sequence.\r\n");
-      break;
-    
-    case SYS_SENSING:
-     /* Active Sensing. This message is intended to be sent repeatedly
-      * to tell the receiver that a connection is alive. Use of this
-      * message is optional. When initially received, the receiver will
-      * expect to receive another Active Sensing message each 300ms (max),
-      * and if it does not then it will assume that the connection has been
-      * terminated. At termination, the receiver will turn off all voices
-      * and return to normal (non- active sensing) operation. 
-      */
-      debug_print("midi active sensing.\r\n");
-      break;
-    
-    case SYS_RESET:
-     /* Reset. Reset all receivers in the system to power-up status. This
-      * should be used sparingly, preferably under manual control. In
-      * particular, it should not be sent on power-up.
-      */
-      debug_print("midi system reset.\r\n");
-      break; 
-
-    default:
-      debug_print("midi system message: 0x%02X\n\r", MidiBuffer[0]);
-      break;
-  }        
 
   return XST_SUCCESS;
 }

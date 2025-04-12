@@ -15,21 +15,25 @@ library IEEE;
   use IEEE.NUMERIC_STD.ALL;
 
 package synth_pkg is
-  constant SYNTH_ENG_REV  : std_logic_vector := x"00000001";
-  constant SYNTH_ENG_DATE : std_logic_vector := x"03302025";
+  constant SYNTH_ENG_REV  : std_logic_vector := x"00000002";
+  constant SYNTH_ENG_DATE : std_logic_vector := x"04032025";
 
   -- memmory-mapped address definitions
-  constant OFFSET_PULSE_WIDTH_REG : std_logic_vector := "0000000";
-  constant OFFSET_PULSE_REG       : std_logic_vector := "0000001";
-  constant OFFSET_RAMP_REG        : std_logic_vector := "0000010";
-  constant OFFSET_SAW_REG         : std_logic_vector := "0000011";
-  constant OFFSET_TRI_REG         : std_logic_vector := "0000100";
-  constant OFFSET_SINE_REG        : std_logic_vector := "0000101";
-  constant OFFSET_GAIN_SHIFT_REG  : std_logic_vector := "0001000";
-  constant OFFSET_GAIN_SCALE_REG  : std_logic_vector := "0001001";
-  constant OFFSET_REV_REG         : std_logic_vector := "1111000";
-  constant OFFSET_DATE_REG        : std_logic_vector := "1111001";
-  constant OFFSET_WRAPBACK_REG    : std_logic_vector := "1111111";
+  constant OFFSET_PULSE_WIDTH_REG : std_logic_vector := "0000000"; --   0
+  constant OFFSET_PULSE_REG       : std_logic_vector := "0000001"; --   1
+  constant OFFSET_RAMP_REG        : std_logic_vector := "0000010"; --   2
+  constant OFFSET_SAW_REG         : std_logic_vector := "0000011"; --   3
+  constant OFFSET_TRI_REG         : std_logic_vector := "0000100"; --   4
+  constant OFFSET_SINE_REG        : std_logic_vector := "0000101"; --   5
+  constant OFFSET_GAIN_SHIFT_REG  : std_logic_vector := "0001000"; --  16
+  constant OFFSET_GAIN_SCALE_REG  : std_logic_vector := "0001001"; --  17
+  constant OFFSET_ATTACK_AMT      : std_logic_vector := "0100000"; --  32
+  constant OFFSET_DECAY_AMT       : std_logic_vector := "0100001"; --  33
+  constant OFFSET_SUSTAIN_AMT     : std_logic_vector := "0100010"; --  34
+  constant OFFSET_RELEASE_AMT     : std_logic_vector := "0100011"; --  35
+  constant OFFSET_REV_REG         : std_logic_vector := "1111000"; -- 120
+  constant OFFSET_DATE_REG        : std_logic_vector := "1111001"; -- 121
+  constant OFFSET_WRAPBACK_REG    : std_logic_vector := "1111111"; -- 127
 
   -- vector size definitions
   constant WIDTH_WAVE_DATA   : natural := 16;
@@ -39,6 +43,8 @@ package synth_pkg is
   constant WIDTH_OUT_GAIN    : natural := 7;
   constant WIDTH_OUT_SHIFT   : natural := 5;
   constant WIDTH_PULSE_WIDTH : natural := 16;
+  constant WIDTH_ADSR_COUNT  : natural := 20;
+  constant WIDTH_ADSR_CC     : natural := 20;
 
   constant NUM_WFRMS       : natural := 5;
   constant NUM_NOTES       : natural := 128;
@@ -59,6 +65,10 @@ package synth_pkg is
   type t_note_amp    is array (0 to 127) of unsigned(WIDTH_NOTE_GAIN-1 downto 0);
   type t_wfrm_amp    is array (0 to NUM_WFRMS-1) of unsigned(WIDTH_WAVE_GAIN-1 downto 0);
   type t_wfrm_ph     is array (0 to NUM_WFRMS-1) of unsigned(WIDTH_WAVE_DATA-1 downto 0);
+
+  type t_adsr        is array (0 to 7) of unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+  type t_adsr_count  is array (I_LOWEST_NOTE to I_HIGHEST_NOTE) of unsigned(WIDTH_ADSR_COUNT-1 downto 0);
+  type t_note_acc    is array (I_LOWEST_NOTE to I_HIGHEST_NOTE) of unsigned(WIDTH_ADSR_COUNT-1 downto 0);
 
 end synth_pkg;
 

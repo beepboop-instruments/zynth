@@ -13,6 +13,10 @@
 *
 ****************************************************************************/
 
+#include <stdint.h>
+#include <stdio.h>
+#include <math.h>
+#include <stdlib.h>
 #include "synth_ctrl.h"
 #include "../utils/utils.h"
 
@@ -27,7 +31,64 @@ int initSynth(void) {
   setOutShift(0x8);
   setPulseWidth(0x8000);
 
+  return initADSR();
+}
+
+/***************************************************************************
+* Play a note and ensure AXI bounds are not exceeded
+****************************************************************************/
+
+void safePlayNote(u8 note, u8 amp) {
+    if (note <= MAX_NOTE) {
+        playNote(note, amp);
+    } else {
+        debug_print("Invalid note %d\r\n", note);
+    }
+}
+
+/***************************************************************************
+* Stop a note and ensure AXI bounds are not exceeded
+****************************************************************************/
+
+void safeStopNote(u8 note) {
+    if (note <= MAX_NOTE) {
+        stopNote(note);
+    } else {
+        debug_print("Invalid note %d\r\n", note);
+    }
+}
+
+/***************************************************************************
+* Perform AXI write and ensure bounds are not exceeded
+****************************************************************************/
+
+void safeSynthWrite(u32 addr, u32 data) {
+    if (addr <= 511*4) {
+        synthWrite(addr, data);
+    } else {
+        debug_print("AXI write skipped — invalid addr: %d\r\n", addr);
+    }
+}
+
+/***************************************************************************
+* Initialize adsr settings
+****************************************************************************/
+
+int initADSR(void) {
+  setAttack(calcADSRamt(0));
+  setDecay(calcADSRamt(0));
+  setSustain(0xFFFFF);
+  setRelease(calcADSRamt(0));
+
   return XST_SUCCESS;
+}
+
+/***************************************************************************
+* Calculate adsr exponential settings
+****************************************************************************/
+
+u32 calcADSRamt(u8 midi_cc) {
+  return (u32)(2 * (128 - midi_cc)); // round to nearest
 }
 
 /***************************************************************************
