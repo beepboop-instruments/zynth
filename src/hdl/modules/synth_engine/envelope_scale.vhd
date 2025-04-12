@@ -144,7 +144,12 @@ begin
         elsif (note_amps_acc(note_index_q) < note_amps_20_q) then
           -- increment note amplitude until played velocity reached
           if (note_amps_20_q - note_amps_acc(note_index_q) >= step_q) then
-            note_amp_d <= note_amps_acc(note_index_q) + step_q;
+            -- ensure at least something plays
+            if (step_q > 0) then
+              note_amp_d <= note_amps_acc(note_index_q) + step_q;
+            else
+              note_amp_d   <= note_amps_acc(note_index_q) + 1;
+            end if;
           else
             -- continue to decay state
             note_amp_d <= note_amps_acc(note_index_q);
@@ -166,7 +171,11 @@ begin
         elsif (note_amps_acc(note_index_q) > sustain_level_q) then
           -- decrease note amplitude until sustain level reached
           if (note_amps_acc(note_index_q) - sustain_level_q >= step_q) then
-            note_amp_d   <= note_amps_acc(note_index_q) - step_q;
+            if (step_q > 0) then
+              note_amp_d <= note_amps_acc(note_index_q) - step_q;
+            else
+              note_amp_d   <= note_amps_acc(note_index_q) - 1;
+            end if;
           else
             -- continue to sustain state
             note_amp_d <= sustain_level_q;

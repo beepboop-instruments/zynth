@@ -110,7 +110,9 @@ end top;
         M03_AXI_0_rvalid : in STD_LOGIC;
         M03_AXI_0_rready : out STD_LOGIC;
         FCLK_CLK0 : out STD_LOGIC;
+        FCLK_CLK1 : out std_logic;
         FCLK_RESET0_N : out STD_LOGIC;
+        FCLK_RESET1_N : out std_logic;
         fab_clk        : in std_logic
       );
       end component ps;
@@ -213,6 +215,10 @@ end top;
     end component rst_sync;
     
     -- Clocks and resets
+    signal clk25   : std_logic;
+    signal rst25   : std_logic;
+    signal rst25_n : std_logic;
+    
     signal clk100  : std_logic;
     signal rst100   : std_logic;
     signal rst100_n : std_logic;
@@ -262,6 +268,7 @@ end top;
   begin
   
   rst100      <= not(rst100_n);
+  rst25       <= not(rst25_n);
   rst12p288_n <= not(rst12p288);
   
   ps_i: component ps
@@ -281,8 +288,10 @@ end top;
       DDR_ras_n => DDR_ras_n,
       DDR_reset_n => DDR_reset_n,
       DDR_we_n => DDR_we_n,
-      FCLK_CLK0 => clk100,
+      FCLK_CLK0 => clk25,
+      FCLK_CLK1 => clk100,
       FCLK_RESET0_N => rst100_n,
+      FCLK_RESET1_N => rst25_n,
       FIXED_IO_ddr_vrn => FIXED_IO_ddr_vrn,
       FIXED_IO_ddr_vrp => FIXED_IO_ddr_vrp,
       FIXED_IO_mio(53 downto 0) => FIXED_IO_mio(53 downto 0),
@@ -387,8 +396,8 @@ end top;
     )
     port map (
       -- input clock domain
-      rst         => rst100,
-      clk         => clk100,
+      rst         => rst25,
+      clk         => clk25,
       dac_data_l  => audio_data,
       dac_data_r  => audio_data,
       dac_latched => open,

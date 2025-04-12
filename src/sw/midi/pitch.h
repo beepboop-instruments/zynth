@@ -149,6 +149,10 @@ static const u32 FreqWordDefaults[128] = { \
 * Helper macros
 ****************************************************************************/
 
-#define get_pitch_bend_scale(pitch_bend) pow(2.0, (((pitch_bend - 8192)/ 8192.0 * PITCH_BEND_RANGE) / 12.0))
+// pitch-bend linear approximation
+#define get_pitch_bend_scale(pitch_bend) (1.0 + ((pitch_bend - 8192) / 8192.0 * PITCH_BEND_RANGE) / 12.0)
+
+// pitch-bend exponential equation
+//#define get_pitch_bend_scale(pitch_bend) pow(2.0, (((pitch_bend - 8192)/ 8192.0 * PITCH_BEND_RANGE) / 12.0))
 
 #endif /* PITCH_H */

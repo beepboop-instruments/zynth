@@ -19,7 +19,7 @@
 // midi instance
 #define MIDI_BASEADDR     XPAR_XUARTPS_0_BASEADDR
 #define MIDI_DEVICE_ID    XPAR_XUARTPS_0_DEVICE_ID
-#define MIDI_BUFFER_SIZE  128
+#define MIDI_BUFFER_SIZE  2048
 
 // midi channel voice messages
 #define NOTE_OFF       0x80
@@ -83,19 +83,39 @@
 extern XUartPs MidiPs;
 extern u8 MidiBuffer[MIDI_BUFFER_SIZE];
 
+typedef struct {
+    u8 data[MIDI_BUFFER_SIZE];
+    int head;
+    int tail;
+} RingBuffer;
+
+typedef struct {
+    u8 status;
+    u8 msg[3];
+    u8 count;
+    u8 expected;
+} MidiParser;
+
+extern RingBuffer midi_rb;
+extern MidiParser midi_parser;
+
 /***************************************************************************
 * Function definitions
 ****************************************************************************/
 int configMidi(u32 BaseAddress);
+int rb_is_empty(RingBuffer *rb);
+int rb_is_full(RingBuffer *rb);
+int rb_free_space(RingBuffer *rb);
+void rb_push(RingBuffer *rb, u8 byte);
+u8 rb_pop(RingBuffer *rb);
+void Handler(void *CallBackRef, u32 Event, unsigned int EventData);
 void initFreqWords(void);
-void readMidi(int numBytes);
 int rxMidiMsg(void);
-int MidiNoteOnOff(u8 Ch, u8 OnOff);
-int MidiPolyPressure(u8 Ch);
-int MidiControlChange(u8 Ch);
-int MidiProgChange(u8 Ch);
-int MidiChannelPressure(u8 Ch);
-int MidiPitchBend(u8 Ch);
-int MidiMsgSystemCommon(u8 Cmd);
+void dispatchMidiMessage(u8 *msg, u8 len);
+int MidiPolyPressure(u8 Ch, u8 key, u8 value);
+int MidiControlChange(u8 Ch, u8 control, u8 value);
+int MidiProgChange(u8 Ch, u8 value);
+int MidiChannelPressure(u8 Ch, u8 value);
+int MidiPitchBend(u8 Ch, int lsb, int msb);
 
 #endif /* MIDI_H_ */

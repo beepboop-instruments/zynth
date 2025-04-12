@@ -35,6 +35,42 @@ int initSynth(void) {
 }
 
 /***************************************************************************
+* Play a note and ensure AXI bounds are not exceeded
+****************************************************************************/
+
+void safePlayNote(u8 note, u8 amp) {
+    if (note <= MAX_NOTE) {
+        playNote(note, amp);
+    } else {
+        debug_print("Invalid note %d\r\n", note);
+    }
+}
+
+/***************************************************************************
+* Stop a note and ensure AXI bounds are not exceeded
+****************************************************************************/
+
+void safeStopNote(u8 note) {
+    if (note <= MAX_NOTE) {
+        stopNote(note);
+    } else {
+        debug_print("Invalid note %d\r\n", note);
+    }
+}
+
+/***************************************************************************
+* Perform AXI write and ensure bounds are not exceeded
+****************************************************************************/
+
+void safeSynthWrite(u32 addr, u32 data) {
+    if (addr <= 511*4) {
+        synthWrite(addr, data);
+    } else {
+        debug_print("AXI write skipped — invalid addr: %d\r\n", addr);
+    }
+}
+
+/***************************************************************************
 * Initialize adsr settings
 ****************************************************************************/
 
@@ -51,18 +87,8 @@ int initADSR(void) {
 * Calculate adsr exponential settings
 ****************************************************************************/
 
-// Map midi_cc (0-127) to a value in range [2, 0xFFFFF] approximately
 u32 calcADSRamt(u8 midi_cc) {
-  // Avoid division by zero
-  if (midi_cc > 127) midi_cc = 127;
-
-  // Use exponential mapping: output = A * exp(-k * midi_cc)
-  // Coefficients chosen to approximate the desired values
-  double A = 0xFFFFF;
-  double k = log((double)A / 8.0) / 127.0;
-
-  double result = A * exp(-k * midi_cc);
-  return (u32)(result + 0.5); // round to nearest
+  return (u32)(2 * (128 - midi_cc)); // round to nearest
 }
 
 /***************************************************************************
