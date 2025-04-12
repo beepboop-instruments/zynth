@@ -1,9 +1,9 @@
 ----------------------------------------------------------------------------------
 -- Company: beepboop
--- Engineer: Tyler Huddleston
+-- Engineer: Tyler Huddlesotn
 -- 
 -- Create Date: 04/03/2025
--- Design Name: Synthesizer Engine
+-- Design Name: Synthesizer Enginer
 -- Module Name: Envelope Scale
 -- Description: 
 --   Applies an amplitude envelope to each played note.
@@ -23,11 +23,9 @@ entity envelope_scale is
     DATA_WIDTH      : natural := WIDTH_WAVE_DATA;
     ADSR_WIDTH      : natural := WIDTH_ADSR_CC;
     ACC_WIDTH       : natural := WIDTH_ADSR_COUNT
-  );
   port (
     clk             : in  std_logic;
     rst             : in  std_logic;
-    -- synth controls
     attack_amt      : in  unsigned(ADSR_WIDTH-1 downto 0);
     decay_amt       : in  unsigned(ADSR_WIDTH-1 downto 0);
     sustain_amt     : in  unsigned(ADSR_WIDTH-1 downto 0);

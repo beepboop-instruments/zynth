@@ -319,7 +319,6 @@ begin
     wait for 6e6 ns;
     -- Write to note 127 reg
     axi_write("000" & x"00001FC", x"00000000");
-
     -- End Simulation
     wait for synth_clk_period * 2;
     report "Testbench completed." severity note;
