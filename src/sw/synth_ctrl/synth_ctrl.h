@@ -89,14 +89,20 @@ int initADSR(void) {
 
 u32 calcADSRamt(u8 midi_cc) {
   float scaler = 1.0;
-  if (midi_cc < 32) {
-      scaler = 1.0;
+  if (midi_cc < 4) {
+    scaler = 8.0;
+  } else if (midi_cc < 8) {
+    scaler = 4.0;
+  } else if (midi_cc < 16) {
+    scaler = 2.0;
+  } else if (midi_cc < 32) {
+    scaler = 1.0;
   } else if (midi_cc < 64) {
-      scaler = 0.5;
+    scaler = 0.5;
   } else if (midi_cc < 96) {
-      scaler = 0.25;
+    scaler = 0.25;
   } else {
-      scaler = 0.1;
+    scaler = 0.125;
   }
   return (u32)(scaler * (128 - midi_cc)); // round to nearest
 }
