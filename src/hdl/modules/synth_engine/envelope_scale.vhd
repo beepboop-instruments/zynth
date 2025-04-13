@@ -23,6 +23,7 @@ entity envelope_scale is
     DATA_WIDTH      : natural := WIDTH_WAVE_DATA;
     ADSR_WIDTH      : natural := WIDTH_ADSR_CC;
     ACC_WIDTH       : natural := WIDTH_ADSR_COUNT
+  );
   port (
     clk             : in  std_logic;
     rst             : in  std_logic;

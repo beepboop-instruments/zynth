@@ -31,10 +31,6 @@ architecture tb of synth_engine_tb is
   signal rst      : std_logic := '1';
   signal rst_n    : std_logic := '0';
 
-  signal clk12p288 : std_logic;
-  signal rst12p288 : std_logic := '1';
-  signal rst12p288_n : std_logic := '0';
-
   signal awaddr   : std_logic_vector(AXI_ADDR_WIDTH-1 downto 0);
   signal awvalid  : std_logic;
   signal awready  : std_logic;
@@ -58,29 +54,9 @@ architecture tb of synth_engine_tb is
   signal rready   : std_logic;
 
   -- Clock process
-  constant clk_period  : time := 10 ns;
-  constant clk_period2 : time := 20 ns;
-
-  constant synth_clk_period : time := 82 ns;
-
-  -- MCLK MMCM
-  component clk_wiz_mclk is
-    port (
-      reset         : in  std_logic;
-      clk_in1       : in  std_logic;
-      locked        : out std_logic;
-      clk_out1      : out std_logic
-    );
-  end component clk_wiz_mclk;
-
-  component rst_sync is
-    port (
-      rst_async_in : in  std_logic;
-      clk_sync_in  : in  std_logic;
-      rst_sync_out : out std_logic
-    );
-  end component rst_sync;
-
+  constant clk_period  : time := 40 ns;
+  constant clk_period2 : time := 80 ns;
+    
   -- DUT Component (Assuming entity is named axi_slave)
   component synth_engine is
     generic (
@@ -127,25 +103,9 @@ architecture tb of synth_engine_tb is
 begin
 
   rst_n <= not(rst);
-  rst12p288_n <= not(rst12p288);
-
-  -- MCLK MMCM
-  u_mclk_mmcm: clk_wiz_mclk
-  port map (
-    reset         => rst,
-    clk_in1       => clk,
-    locked        => open,
-    clk_out1      => clk12p288
-  );
-
-  u_rst12p288_sync: rst_sync
-  port map (
-    rst_async_in => rst,
-    clk_sync_in  => clk12p288,
-    rst_sync_out => rst12p288
-  );
 
   -- Instantiate the DUT
+
   uut: synth_engine
     generic map (
       C_S_AXI_DATA_WIDTH  => AXI_DATA_WIDTH,
@@ -155,10 +115,10 @@ begin
     )
     port map (
       -- AXI control interface
-      clk           => clk12p288,
-      rst           => rst12p288,
-      s_axi_aclk    => clk12p288,
-      s_axi_aresetn => rst12p288_n,
+      clk           => clk,
+      rst           => rst,
+      s_axi_aclk    => clk,
+      s_axi_aresetn => rst_n,
       s_axi_awaddr  => awaddr,
       s_axi_awprot  => "000",
       s_axi_awvalid  => awvalid,
@@ -199,61 +159,42 @@ begin
   
     procedure axi_write(
       address : in std_logic_vector(AXI_ADDR_WIDTH-1 downto 0);
-      data    : in std_logic_vector(AXI_DATA_WIDTH-1 downto 0)
-    ) is
-    begin
+      data : in std_logic_vector(AXI_DATA_WIDTH-1 downto 0)
+    ) is begin
       awaddr  <= address;
       awvalid <= '1';
       wdata   <= data;
-      wstrb   <= (others => '1');
+      wstrb   <= "1111";
       wvalid  <= '1';
       bready  <= '1';
-    
-      -- Wait until both address and data handshakes complete
-      while (awready /= '1' or wready /= '1') loop
-        wait until rising_edge(clk12p288);
-      end loop;
-    
-      -- Deassert write signals after handshake
+
+      wait until rising_edge(clk);
       awvalid <= '0';
       wvalid  <= '0';
-    
-      -- Wait for write response
-      wait until rising_edge(clk12p288);
-      while bvalid /= '1' loop
-        wait until rising_edge(clk12p288);
-      end loop;
-    
-      -- Accept response
-      bready <= '0';
+
+      wait until rising_edge(clk);
+      if bvalid = '0' then
+          wait until bvalid = '1';
+      end if;
+      
+      bready  <= '0';
+      
     end procedure;
     
     procedure axi_read(
       address : in std_logic_vector(AXI_ADDR_WIDTH-1 downto 0)
-    ) is
-    begin
+    ) is begin
       araddr  <= address;
       arvalid <= '1';
       rready  <= '1';
-    
-      -- Wait for read address handshake
-      while arready /= '1' loop
-        wait until rising_edge(clk12p288);
-      end loop;
-    
-      -- Deassert address after accepted
+      
+      wait until rising_edge(clk);
       arvalid <= '0';
+      
+      wait until rising_edge(clk);
+      rready  <= '0';
     
-      -- Wait for read data valid
-      while rvalid /= '1' loop
-        wait until rising_edge(clk12p288);
-      end loop;
-    
-      -- Deassert ready after one cycle (assuming single-beat read)
-      wait until rising_edge(clk12p288);
-      rready <= '0';
     end procedure;
-    
     
   begin
     -- Reset
@@ -267,11 +208,11 @@ begin
     araddr  <= "000" & x"0000000";
     arvalid <= '0';
     rready  <= '0';
-    wait for synth_clk_period;
+    wait for clk_period2;
     rst     <= '0';
-    wait for synth_clk_period;
+    wait for clk_period2;
 
-    wait for synth_clk_period * 1024;
+    wait for clk_period * 1024;
     
     -- Write to register 0
     axi_write("000" & x"0000000", x"00000018");
@@ -316,11 +257,11 @@ begin
     -- Write to release regs
     axi_write("000" & x"000028C", x"00002000");
 
-    wait for 6e6 ns;
+    wait for clk_period * 1e2;
     -- Write to note 127 reg
     axi_write("000" & x"00001FC", x"00000000");
     -- End Simulation
-    wait for synth_clk_period * 2;
+    wait for clk_period2;
     report "Testbench completed." severity note;
   wait;
 end process;
