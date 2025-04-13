@@ -1,9 +1,9 @@
 ----------------------------------------------------------------------------------
 -- Company: beepboop
--- Engineer: Tyler Huddlesotn
+-- Engineer: Tyler Huddleston
 -- 
 -- Create Date: 04/03/2025
--- Design Name: Synthesizer Enginer
+-- Design Name: Synthesizer Engine
 -- Module Name: Envelope Scale
 -- Description: 
 --   Applies an amplitude envelope to each played note.

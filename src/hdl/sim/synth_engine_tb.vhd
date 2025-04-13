@@ -257,7 +257,8 @@ begin
     -- Write to release regs
     axi_write("000" & x"000028C", x"00002000");
 
-    wait for clk_period * 1e2;
+    wait for 6e6 ns;
+    wait until rising_edge(clk);
     -- Write to note 127 reg
     axi_write("000" & x"00001FC", x"00000000");
     -- End Simulation
