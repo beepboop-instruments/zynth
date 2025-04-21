@@ -532,29 +532,64 @@ int MidiControlChange(u8 Ch, u8 control, u8 value) {
     case CC_ATTACK_AMT:
      /* Set attack length
       */
-      setAttack(calcADSRamt(value));
+      setADSRAttack(calcADSRamt(value));
       change = "ATTACK AMT";
       break;
 
     case CC_DECAY_AMT:
       /* Set decay length
       */
-      setDecay(calcADSRamt(value));
+      setADSRDecay(calcADSRamt(value));
       change = "DECAY AMT";
       break;
 
     case CC_SUSTAIN_AMT:
       /* Set sustain amount
       */
-      setSustain(value << 13);
+      setADSRSustain(value << 13);
       change = "SUSTAIN AMT";
       break;
 
     case CC_RELEASE_AMT:
       /* Set release length
       */
-      setRelease(calcADSRamt(value));
+      setADSRRelease(calcADSRamt(value));
       change = "RELEASE AMT";
+      break;
+    
+    case CC_COMP_ATTACK:
+      /* Set compressor attack amount
+      */
+      setCompAttack(value);
+      change = "COMPRESSOR ATTACK";
+      break;
+
+    case CC_COMP_RELEASE:
+      /* Set compressor release amount
+      */
+      setCompRelease(value);
+      change = "COMPRESSOR RELEASE";
+      break;
+    
+    case CC_COMP_THRESH:
+      /* Set compressor threshold
+      */
+      setCompThreshold(value << 17);
+      change = "COMPRESSOR THRESHOLD";
+      break;
+
+    case CC_COMP_KNEE_W:
+      /* Set compressor knee width
+      */
+      setCompKneeWidth(value << 17);
+      change = "COMPRESSOR KNEE WIDTH";
+      break;
+    
+    case CC_COMP_KNEE_S:
+      /* Set compressor knee slope
+      */
+      setCompKneeSlope(value);
+      change = "COMPRESSOR KNEE SLOPE";
       break;
 
     default:

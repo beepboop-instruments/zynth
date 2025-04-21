@@ -36,6 +36,7 @@
 
 int main(void) {
 
+  xil_printf("%s", STR_HEADER);
 
 	// Initialize synthesizer
 	if (initSynth() || checkSynthCtrl()) {
@@ -56,10 +57,12 @@ int main(void) {
     u32 count = 0;
 	// Poll for midi messages received
 	while (1) {
+        /*
         if (count++ > 10000000) {
             xil_printf("ALIVE\r\n");
             count = 0;
-        }
+        } */
+        
 		// Wait until there is data then process received message
 		if (!rb_is_empty(&midi_rb)) {
 			rxMidiMsg();

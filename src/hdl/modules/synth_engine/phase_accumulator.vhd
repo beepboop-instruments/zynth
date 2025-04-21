@@ -29,6 +29,8 @@ entity phase_accumulator is
   port (
     clk             : in  std_logic;
     rst             : in  std_logic;
+    -- state machine in
+    data_latched    : in  std_logic;
     -- synth controls
     phase_incs      : in  t_ph_inc_lut;
     note_amps       : in  t_note_amp;
@@ -72,6 +74,11 @@ architecture rtl of phase_accumulator is
   -- shift amount
   signal  shift_amt : integer range 0 to 10;
 
+  -- states
+  type    t_synth_state is (E_IDLE, E_SYNTH);
+  signal  synth_state_d,
+          synth_state_q   : t_synth_state;
+
 begin
 
   -- output assignments
@@ -102,23 +109,36 @@ begin
   -- increment phase
   phase_d <= phase_reg_lookup + phase_inc_shifted;
 
-  -- synchronous counters
-  s_counter: process(note_index_q, phase_index_q)
+  -- state machine
+  s_sm: process(data_latched, synth_state_q, note_index_q, phase_index_q)
   begin
-    -- note index cyclical counter over note range
-    if note_index_q < I_HIGHEST_NOTE then
-      note_index_d <= note_index_q + 1;
-      -- phase index cyclical counter from 116 to 127
-      if phase_index_q < 127 then
-        phase_index_d <= phase_index_q + 1;
-      else
-        phase_index_d <= 116;
-      end if;
-    else
+    synth_state_d <= synth_state_q;
+    note_index_d  <= note_index_q;
+    phase_index_d <= phase_index_q;
+
+    if (synth_state_q = E_IDLE) then
+      -- wait for data latched
       note_index_d  <= I_LOWEST_NOTE;
       phase_index_d <= 120;
+      if (data_latched = '1') then
+        synth_state_d <= E_SYNTH;
+      end if;
+
+    elsif (synth_state_q = E_SYNTH) then
+      -- note index cyclical counter over note range
+      if (note_index_q < I_HIGHEST_NOTE) then
+        note_index_d <= note_index_q + 1;
+        -- phase index cyclical counter from 116 to 127
+        if (phase_index_q < 127) then
+          phase_index_d <= phase_index_q + 1;
+        else
+          phase_index_d <= 116;
+        end if;
+      else
+        synth_state_d <= E_IDLE;
+      end if;
     end if;
-  end process s_counter;
+  end process s_sm;
   
   -- check for start of cycle
   s_start_of_cycle: process(phase_inc_shifted, phase_d)
@@ -133,13 +153,14 @@ begin
   s_regs: process(clk, rst)
   begin
     if (rst = '1') then
-      note_index_q      <= I_LOWEST_NOTE;
-      note_index_q2     <= I_LOWEST_NOTE;
-      phase_index_q     <= 120;
-      phase_q           <= (others => '0');
-      phase_regs        <= (others => (others => '0'));
-      note_amp_lookup_q <= (others => '0');
-      cycle_start_q     <= '0';
+      note_index_q              <= I_LOWEST_NOTE;
+      note_index_q2             <= I_HIGHEST_NOTE;
+      phase_index_q             <= 120;
+      phase_q                   <= (others => '0');
+      phase_regs                <= (others => (others => '0'));
+      note_amp_lookup_q         <= (others => '0');
+      cycle_start_q             <= '0';
+      synth_state_q             <= E_IDLE;
     elsif rising_edge(clk) then
       note_index_q              <= note_index_d;
       note_index_q2             <= note_index_q;
@@ -148,6 +169,7 @@ begin
       phase_regs(note_index_q2) <= phase_q;
       note_amp_lookup_q         <= note_amp_lookup_d;
       cycle_start_q             <= cycle_start_d;
+      synth_state_q             <= synth_state_d;
     end if;
   end process s_regs;
 

@@ -47,34 +47,23 @@ architecture Behavioral of codec_i2s is
     rst_sync_out : out std_logic
   );
   end component rst_sync;
-
-  component clkdivider is
-    generic (
-      G_DIVIDEBY : natural := 2
-    );
-    port (
-      clk    : in std_logic;
-      rst    : in std_logic;
-      clkout : out std_logic;
-      rstout : out std_logic
-    );
-  end component clkdivider;
   
   signal bclk_int  : std_logic;
   signal lrc_int   : std_logic;
-  signal lrc_int_q : std_logic;
+  signal lrc_int_q, lrc_int_q2 : std_logic;
   signal rst_mclk  : std_logic;
-  signal rst_bclk  : std_logic;
+
+  signal bclk_cnt    : natural range 0 to G_MCLK_BCLK_RATIO-1;
   
   signal data_cnt    : natural range 0 to G_WORDSIZE-1;
   signal data_out    : std_logic_vector(G_WORDSIZE-1 downto 0);
   signal data_pad    : std_logic_vector(G_WORDSIZE-G_DATA_WIDTH-2 downto 0);
   signal data_sr     : std_logic_vector(G_WORDSIZE-1 downto 0);
+
+  signal dac_data_l_q,
+         dac_data_r_q  : std_logic_vector(G_DATA_WIDTH-1 downto 0);
   
-  signal data_l_latched : std_logic_vector(G_DATA_WIDTH-1 downto 0);
-  signal data_r_latched : std_logic_vector(G_DATA_WIDTH-1 downto 0);
-  
-  signal dout_latched_d, dout_latched_q : std_logic;
+  signal dout_latched_d, dout_latched_q, dout_latched_q2 : std_logic;
   
 begin
 
@@ -86,46 +75,67 @@ begin
   reclrc      <= lrc_int;
   pbdat       <= data_sr(G_WORDSIZE-1);
   mute_n      <= not rst;
-  dac_latched <= dout_latched_q;
+  dac_latched <= dout_latched_q2;
   adc_data    <= (others => '0');
   adc_latched <= '0';
   
 --------------------- logic assignments ---------------------
 
   data_pad <= (others => '0');
-  data_out <= '0' & data_l_latched & data_pad when lrc_int = '0' else '0' & data_r_latched & data_pad;
+  data_out <= '0' & dac_data_l_q & data_pad when lrc_int = '0' else '0' & dac_data_r_q & data_pad;
   dout_latched_d <= '1' when data_cnt = 0 else '0';
-  
-  data_l_latched <= dac_data_l when dout_latched_q = '1';
-  data_r_latched <= dac_data_r when dout_latched_q = '1';
   
 -------------------- synchonrous logic ----------------------
 
   s_dout_latched: process(clk, rst)
   begin
     if rst = '1' then
-      dout_latched_q <= '0';
-      lrc_int_q      <= '1';
+      dout_latched_q     <= '0';
+      dout_latched_q2    <= '0';
+      lrc_int_q          <= '1';
+      lrc_int_q2         <= '1';
     elsif rising_edge(clk) then
-      lrc_int_q      <= lrc_int;
-      dout_latched_q <= dout_latched_d and lrc_int and not(lrc_int_q);
+      dout_latched_q     <= dout_latched_d;
+      dout_latched_q2    <= dout_latched_q and lrc_int_q and not(lrc_int_q2);
+      lrc_int_q          <= lrc_int;
+      lrc_int_q2         <= lrc_int_q;
     end if;
   end process s_dout_latched;
 
-  s_i2s: process(clk, rst_bclk, bclk_int)
+  s_i2s: process(mclk_in, rst_mclk)
   begin
-    if rst_bclk = '1' then
-      data_cnt  <= G_WORDSIZE-1;
-      lrc_int   <= '0';
-      data_sr   <= (others => '0');
-    elsif falling_edge(bclk_int) then
-      if data_cnt < G_WORDSIZE-1 then
-        data_cnt  <= data_cnt + 1;
-        data_sr   <= data_sr(G_WORDSIZE-2 downto 0) & data_sr(G_WORDSIZE-1);
+    if rst_mclk = '1' then
+      bclk_cnt <= 0;
+      lrc_int  <= '0';
+      dac_data_l_q <= (others => '0');
+      dac_data_r_q <= (others => '0');
+      data_cnt     <= 0;
+      data_sr      <= (others => '0');
+    elsif rising_edge(mclk_in) then
+      -- make bclk from counts of mclk
+      if (bclk_cnt < G_MCLK_BCLK_RATIO-1) then
+        bclk_cnt <= bclk_cnt + 1;
       else
-        data_cnt  <= 0;
-        lrc_int   <= not(lrc_int);
-        data_sr   <= data_out;
+        bclk_cnt <= 0;
+      end if;
+      -- data flow
+      if (bclk_cnt = G_MCLK_BCLK_RATIO/2) then
+        -- on falling edge of bclk
+        bclk_int <= '1';
+        if data_cnt < G_WORDSIZE-1 then
+          data_cnt           <= data_cnt + 1;
+          data_sr            <= data_sr(G_WORDSIZE-2 downto 0) & data_sr(G_WORDSIZE-1);
+          dac_data_l_q       <= dac_data_l;
+          dac_data_r_q       <= dac_data_r;
+        else
+          data_cnt           <= 0;
+          lrc_int            <= not(lrc_int);
+          data_sr            <= data_out;
+          dac_data_l_q       <= dac_data_l_q;
+          dac_data_r_q       <= dac_data_r_q;
+        end if;
+      else
+        bclk_int <= '0';
       end if;
     end if;
   end process s_i2s;
@@ -137,18 +147,6 @@ begin
     rst_async_in => rst,
     clk_sync_in  => mclk_in,
     rst_sync_out => rst_mclk
-  );
-
-  -- BCLK from MCLK
-  u_bclk_div: clkdivider
-  generic map (
-    G_DIVIDEBY => G_MCLK_BCLK_RATIO
-  )
-  port map (
-    clk      => mclk_in,
-    rst      => rst_mclk,
-    clkout   => bclk_int,
-    rstout   => rst_bclk
   );
     
 end Behavioral;

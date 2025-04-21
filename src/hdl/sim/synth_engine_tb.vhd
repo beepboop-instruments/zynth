@@ -19,6 +19,11 @@ library xil_defaultlib;
   use xil_defaultlib.music_note_pkg.all;
 
 entity synth_engine_tb is
+  port (
+    clk_tb        : out std_logic;
+    rst_tb        : out std_logic;
+    audio_out     : out std_logic_vector(WIDTH_WAVE_DATA+7 downto 0)
+  );
 end synth_engine_tb;
 
 architecture tb of synth_engine_tb is
@@ -56,28 +61,59 @@ architecture tb of synth_engine_tb is
   -- Clock process
   constant clk_period  : time := 40 ns;
   constant clk_period2 : time := 80 ns;
-    
-  -- DUT Component (Assuming entity is named axi_slave)
-  component synth_engine is
+
+  signal data_latched: std_logic := '0';
+  constant strobe_cycles : integer := 260;
+  signal counter : integer range 0 to strobe_cycles := 0;
+  
+  -- synth controls
+  signal phase_incs   : t_ph_inc_lut;
+  signal note_amps    : t_note_amp;
+  signal wfrm_amps    : t_wfrm_amp;
+  signal wfrm_phs     : t_wfrm_ph;
+  signal pulse_width  : unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
+  signal adsr_attack  : unsigned(WIDTH_ADSR_CC-1 downto 0);
+  signal adsr_decay   : unsigned(WIDTH_ADSR_CC-1 downto 0);
+  signal adsr_sustain : unsigned(WIDTH_ADSR_CC-1 downto 0);
+  signal adsr_release : unsigned(WIDTH_ADSR_CC-1 downto 0);
+  signal out_amp      : unsigned(WIDTH_OUT_GAIN-1 downto 0);
+  signal out_shift    : unsigned(WIDTH_OUT_SHIFT-1 downto 0);
+  
+  component synth_axi_ctrl is
     generic (
       -- AXI parameters
       C_S_AXI_DATA_WIDTH  : integer  := 32;
-      C_S_AXI_ADDR_WIDTH  : integer  := 31;
-      -- waveform parameters
-      DATA_WIDTH     : natural := WIDTH_WAVE_DATA;
-      OUT_DATA_WIDTH : natural := WIDTH_WAVE_DATA+8
+      C_S_AXI_ADDR_WIDTH  : integer  := 31
     );
     port (
-      -- clock and reset
-      clk           : in std_logic;
-      rst           : in std_logic;
+      -- user clock domain
+      clk                : in  std_logic;
+      rst                : in  std_logic;
+      -- synth controls out
+      note_amps          : out t_note_amp;
+      ph_inc_table       : out t_ph_inc_lut;
+      wfrm_amps          : out t_wfrm_amp;
+      wfrm_phs           : out t_wfrm_ph;
+      out_amp            : out unsigned(WIDTH_OUT_GAIN-1 downto 0);
+      out_shift          : out unsigned(WIDTH_OUT_SHIFT-1 downto 0);
+      pulse_width        : out unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
+      adsr_attack_amt    : out unsigned(WIDTH_ADSR_CC-1 downto 0);
+      adsr_decay_amt     : out unsigned(WIDTH_ADSR_CC-1 downto 0);
+      adsr_sustain_amt   : out unsigned(WIDTH_ADSR_CC-1 downto 0);
+      adsr_release_amt   : out unsigned(WIDTH_ADSR_CC-1 downto 0);
+      -- compressor controls
+      comp_attack_amt    : out integer;
+      comp_release_amt   : out integer;
+      comp_threshold     : out unsigned(WIDTH_WAVE_DATA-1 downto 0);
+      comp_knee_width    : out unsigned(WIDTH_WAVE_DATA-1 downto 0);
+      comp_knee_slope    : out unsigned(WIDTH_WAVE_GAIN-1 downto 0);
 
       -- AXI control interface
-      s_axi_aclk    : in  std_logic;
-      s_axi_aresetn : in  std_logic;
-      s_axi_awaddr   : in std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
-      s_axi_awprot   : in std_logic_vector(2 downto 0);
-      s_axi_awvalid  : in std_logic;
+      s_axi_aclk     : in  std_logic;
+      s_axi_aresetn  : in  std_logic;
+      s_axi_awaddr   : in  std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
+      s_axi_awprot   : in  std_logic_vector(2 downto 0);
+      s_axi_awvalid  : in  std_logic;
       s_axi_awready  : out std_logic;
       s_axi_wdata    : in  std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
       s_axi_wstrb    : in  std_logic_vector(3 downto 0);
@@ -93,8 +129,41 @@ architecture tb of synth_engine_tb is
       s_axi_rdata    : out std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
       s_axi_rresp    : out std_logic_vector(1 downto 0);
       s_axi_rvalid   : out std_logic;
-      s_axi_rready   : in  std_logic;
-
+      s_axi_rready   : in  std_logic
+    );
+  end component synth_axi_ctrl;
+    
+  -- DUT Component (Assuming entity is named axi_slave)
+  component synth_engine is
+    generic (
+      -- synth control parameters
+      PHASE_WIDTH     : integer := WIDTH_PH_DATA;
+      NOTE_GAIN_WIDTH : integer := WIDTH_NOTE_GAIN;
+      SIN_LUT_PH      : natural := 12;
+      ADSR_WIDTH      : natural := WIDTH_ADSR_CC;
+      ACC_WIDTH       : natural := WIDTH_ADSR_COUNT;
+      -- waveform parameters
+      DATA_WIDTH      : natural := WIDTH_WAVE_DATA;
+      OUT_DATA_WIDTH  : natural := WIDTH_WAVE_DATA+8
+    );
+    port (
+      -- clock and reset
+      clk           : in std_logic;
+      rst           : in std_logic;
+      -- state machine in
+      data_latched  : in  std_logic;
+      -- synth controls
+      phase_incs    : in  t_ph_inc_lut;
+      note_amps     : in  t_note_amp;
+      wfrm_amps     : in  t_wfrm_amp;
+      wfrm_phs      : in  t_wfrm_ph;
+      pulse_width   : in  unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
+      attack_amt    : in  unsigned(ADSR_WIDTH-1 downto 0);
+      decay_amt     : in  unsigned(ADSR_WIDTH-1 downto 0);
+      sustain_amt   : in  unsigned(ADSR_WIDTH-1 downto 0);
+      release_amt   : in  unsigned(ADSR_WIDTH-1 downto 0);
+      out_amp       : in  unsigned(WIDTH_OUT_GAIN-1 downto 0);
+      out_shift     : in  unsigned(WIDTH_OUT_SHIFT-1 downto 0);
       -- Digital audio output
       audio_out     : out std_logic_vector(OUT_DATA_WIDTH-1 downto 0)
     );
@@ -102,45 +171,117 @@ architecture tb of synth_engine_tb is
     
 begin
 
+  -- assign outputs
+  clk_tb <= clk;
+  rst_tb <= rst;
+
   rst_n <= not(rst);
 
-  -- Instantiate the DUT
-
-  uut: synth_engine
+  -- Strobe Generator
+  strobe_process : process(clk)
+  begin
+    if rising_edge(clk) then
+      if rst = '1' then
+        counter <= 0;
+        data_latched <= '0';
+      else
+        if counter = strobe_cycles - 1 then
+          data_latched <= '1';
+          counter <= 0;
+        else
+          data_latched <= '0';
+          counter <= counter + 1;
+        end if;
+      end if;
+    end if;
+  end process;
+  
+  u_synth_axi_ctrl: synth_axi_ctrl
     generic map (
-      C_S_AXI_DATA_WIDTH  => AXI_DATA_WIDTH,
-      C_S_AXI_ADDR_WIDTH  => AXI_ADDR_WIDTH,
-      DATA_WIDTH     => WIDTH_WAVE_DATA,
-      OUT_DATA_WIDTH => WIDTH_WAVE_DATA+8
+      -- Width of S_AXI data bus
+      C_S_AXI_DATA_WIDTH => 32,
+      -- Width of S_AXI address bus
+      C_S_AXI_ADDR_WIDTH => 31
+    )
+    port map (
+      -- user clock domain
+      clk              => clk,
+      rst              => rst,
+      -- synth controls out
+      note_amps        => note_amps,
+      ph_inc_table     => phase_incs,
+      wfrm_amps        => wfrm_amps,
+      wfrm_phs         => wfrm_phs,
+      out_amp          => out_amp,
+      out_shift        => out_shift,
+      pulse_width      => pulse_width,
+      adsr_attack_amt  => adsr_attack,
+      adsr_decay_amt   => adsr_decay,
+      adsr_sustain_amt => adsr_sustain,
+      adsr_release_amt => adsr_release,
+      -- compressor controls
+      comp_attack_amt  => open,
+      comp_release_amt => open,
+      comp_threshold   => open,
+      comp_knee_width  => open,
+      comp_knee_slope  => open,
+      -- AXI control interface
+      s_axi_aclk       => clk,
+      s_axi_aresetn    => rst_n,
+      s_axi_awaddr     => awaddr,
+      s_axi_awprot     => "000",
+      s_axi_awvalid    => awvalid,
+      s_axi_awready    => awready,
+      s_axi_wdata      => wdata,
+      s_axi_wstrb      => wstrb,
+      s_axi_wvalid     => wvalid,
+      s_axi_wready     => wready,
+      s_axi_bresp      => bresp,
+      s_axi_bvalid     => bvalid,
+      s_axi_bready     => bready,
+      s_axi_araddr     => araddr,
+      s_axi_arprot     => "000",
+      s_axi_arvalid    => arvalid,
+      s_axi_arready    => arready,
+      s_axi_rdata      => rdata,
+      s_axi_rresp      => rresp,
+      s_axi_rvalid     => rvalid,
+      s_axi_rready     => rready
+    );
+
+  -- Instantiate the DUT
+  u_synth_engine: synth_engine
+    generic map (
+      -- synth control parameters
+      PHASE_WIDTH     => WIDTH_PH_DATA,
+      NOTE_GAIN_WIDTH => WIDTH_NOTE_GAIN,
+      SIN_LUT_PH      => 12,
+      ADSR_WIDTH      => WIDTH_ADSR_CC,
+      ACC_WIDTH       => WIDTH_ADSR_COUNT,
+      -- waveform parameters
+      DATA_WIDTH      => WIDTH_WAVE_DATA,
+      OUT_DATA_WIDTH  => WIDTH_WAVE_DATA+8
     )
     port map (
       -- AXI control interface
       clk           => clk,
       rst           => rst,
-      s_axi_aclk    => clk,
-      s_axi_aresetn => rst_n,
-      s_axi_awaddr  => awaddr,
-      s_axi_awprot  => "000",
-      s_axi_awvalid  => awvalid,
-      s_axi_awready  => awready,
-      s_axi_wdata    => wdata,
-      s_axi_wstrb    => wstrb,
-      s_axi_wvalid  => wvalid,
-      s_axi_wready  => wready,
-      s_axi_bresp    => bresp,
-      s_axi_bvalid  => bvalid,
-      s_axi_bready  => bready,
-      s_axi_araddr  => araddr,
-      s_axi_arprot  => "000",
-      s_axi_arvalid  => arvalid,
-      s_axi_arready  => arready,
-      s_axi_rdata    => rdata,
-      s_axi_rresp    => rresp,
-      s_axi_rvalid  => rvalid,
-      s_axi_rready  => rready,
-
+      -- state machine in
+      data_latched  => data_latched,
+      -- synth controls in
+      note_amps     => note_amps,
+      phase_incs    => phase_incs,
+      wfrm_amps     => wfrm_amps,
+      wfrm_phs      => wfrm_phs,
+      out_amp       => out_amp,
+      out_shift     => out_shift,
+      pulse_width   => pulse_width,
+      attack_amt    => adsr_attack,
+      decay_amt     => adsr_decay,
+      sustain_amt   => adsr_sustain,
+      release_amt   => adsr_release,
       -- Digital audio output
-      audio_out     => open
+      audio_out     => audio_out
     );
   
   -- Clock Process

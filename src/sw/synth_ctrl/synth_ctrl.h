@@ -1,171 +1,129 @@
-/****************************************************************************/
-/**
-* synth_ctrl.c
-*
-* This file contains the functions for controlling the synthesizer.
-*
-*
-* REVISION HISTORY:
-*
-* Ver   Who    Date     Changes
-* ----- ------ -------- -----------------------------------------------------
-* 0.00  tjh    03/24/25 Initial file
-*
-****************************************************************************/
-
-#include <stdint.h>
-#include <stdio.h>
-#include <math.h>
-#include <stdlib.h>
-#include "synth_ctrl.h"
-#include "../utils/utils.h"
+#ifndef SYNTH_CTRL_H
+#define SYNTH_CTRL_H
 
 /***************************************************************************
-* Initialize synthesizer controller
+* Include files
 ****************************************************************************/
 
-int initSynth(void) {
+#include "xparameters.h"
+#include "xgpio_l.h"
+#include <xil_types.h>
+#include <xstatus.h>
 
-  setWaveAmp(SINE_WAVE, 0x1F);
-  setOutAmp(0x3F);
-  setOutShift(0x8);
-  setPulseWidth(0x8000);
-
-  return initADSR();
-}
+#define SYNTH_CTRL_BASEADDR XPAR_M03_AXI_0_BASEADDR
 
 /***************************************************************************
-* Play a note and ensure AXI bounds are not exceeded
+* Type definitions
 ****************************************************************************/
 
-void safePlayNote(u8 note, u8 amp) {
-    if (note <= MAX_NOTE) {
-        playNote(note, amp);
-    } else {
-        debug_print("Invalid note %d\r\n", note);
-    }
-}
+typedef uint8_t wave_type;
 
 /***************************************************************************
-* Stop a note and ensure AXI bounds are not exceeded
+* Constant definitions
 ****************************************************************************/
+#define MAX_NOTE 127
 
-void safeStopNote(u8 note) {
-    if (note <= MAX_NOTE) {
-        stopNote(note);
-    } else {
-        debug_print("Invalid note %d\r\n", note);
-    }
-}
+#define SAMPLE_RATE 96000
+#define MAX_AMPLITUDE 65535
+
+// waveform types
+#define PULSE_WAVE 1
+#define RAMP_WAVE  2
+#define SAW_WAVE   3
+#define TRI_WAVE   4
+#define SINE_WAVE  5
+
+// ADSR types
+#define ATTACK  0
+#define DECAY   1
+#define SUSTAIN 2
+#define RELEASE 3
+
+// address offsets
+#define OFFSET_PULSE_WIDTH_REG   0x200
+#define OFFSET_PULSE_REG         0x204
+#define OFFSET_RAMP_REG          0x208
+#define OFFSET_SAW_REG           0x20C
+#define OFFSET_TRI_REG           0x210
+#define OFFSET_SINE_REG          0x214
+#define OFFSET_GAIN_SHIFT_REG    0x220
+#define OFFSET_GAIN_SCALE_REG    0x224
+#define OFFSET_ADSR_ATTACK_AMT   0x280
+#define OFFSET_ADSR_DECAY_AMT    0x284
+#define OFFSET_ADSR_SUSTAIN_AMT  0x288
+#define OFFSET_ADSR_RELEASE_AMT  0x28C
+#define OFFSET_COMP_ATTACK_AMT   0x290
+#define OFFSET_COMP_RELEASE_AMT  0x294
+#define OFFSET_COMP_THRESHOLD    0x298
+#define OFFSET_COMP_KNEE_WIDTH   0x29C
+#define OFFSET_COMP_KNEE_SLOPE   0x2A0
+#define OFFSET_REV_REG           0x3E0
+#define OFFSET_DATE_REG          0x3E4
+#define OFFSET_WRAPBACK_REG      0x3FC
+#define OFFSET_PITCH_REG         0x400
+
+// midi controller CC mapping
+#define CC_SINE_AMT     31
+#define CC_TRI_AMT      32
+#define CC_SAW_AMT      33
+#define CC_RAMP_AMT     34
+#define CC_PWM_AMT      35
+#define CC_PWM_WIDTH    36
+#define CC_ATTACK_AMT   21
+#define CC_DECAY_AMT    22
+#define CC_SUSTAIN_AMT  23
+#define CC_RELEASE_AMT  24
+#define CC_COMP_ATTACK  41
+#define CC_COMP_RELEASE 42
+#define CC_COMP_THRESH  43
+#define CC_COMP_KNEE_W  44
+#define CC_COMP_KNEE_S  45
 
 /***************************************************************************
-* Perform AXI write and ensure bounds are not exceeded
+* Helper macros
 ****************************************************************************/
 
-void safeSynthWrite(u32 addr, u32 data) {
-    if (addr <= 511*4) {
-        synthWrite(addr, data);
-    } else {
-        debug_print("AXI write skipped — invalid addr: %d\r\n", addr);
-    }
-}
+#define synthRead(addr)             XGpio_ReadReg(SYNTH_CTRL_BASEADDR, addr)
+#define synthWrite(addr, data)      XGpio_WriteReg(SYNTH_CTRL_BASEADDR, addr, data)
+
+#define playNote(note, amp)         safeSynthWrite(note*4, amp)
+#define stopNote(note)              safeSynthWrite(note*4, 0)
+#define setPitch(note, pitch)       safeSynthWrite(OFFSET_PITCH_REG + note*4, pitch)
+#define setPulseWidth(width)        safeSynthWrite(OFFSET_PULSE_WIDTH_REG, width)
+#define setWaveAmp(wave_form, amp)  safeSynthWrite(0x200 + 4*wave_form, amp)
+#define setWavePh(wave_form, phase) safeSynthWrite(0x200 + 4*wave_form, phase)
+#define setADSRAttack(amt)          safeSynthWrite(OFFSET_ADSR_ATTACK_AMT, amt)
+#define setADSRDecay(amt)           safeSynthWrite(OFFSET_ADSR_DECAY_AMT, amt)
+#define setADSRSustain(amt)         safeSynthWrite(OFFSET_ADSR_SUSTAIN_AMT, amt)
+#define setADSRRelease(amt)         safeSynthWrite(OFFSET_ADSR_RELEASE_AMT, amt)
+#define setCompAttack(amt)          safeSynthWrite(OFFSET_COMP_ATTACK_AMT, amt)
+#define setCompRelease(amt)         safeSynthWrite(OFFSET_COMP_RELEASE_AMT, amt)
+#define setCompThreshold(amt)       safeSynthWrite(OFFSET_COMP_THRESHOLD, amt)
+#define setCompKneeWidth(amt)       safeSynthWrite(OFFSET_COMP_KNEE_WIDTH, amt)
+#define setCompKneeSlope(amt)       safeSynthWrite(OFFSET_COMP_KNEE_SLOPE, amt)
+#define setOutAmp(amp)              safeSynthWrite(OFFSET_GAIN_SCALE_REG, amp)
+#define setOutShift(shift_amt)      safeSynthWrite(OFFSET_GAIN_SHIFT_REG, shift_amt)
+#define setWrapback(data)           safeSynthWrite(OFFSET_WRAPBACK_REG, data)
+
+#define readRev()                   synthRead(OFFSET_REV_REG)
+#define readDateCode()              synthRead(OFFSET_DATE_REG)
+#define readWrapback()              synthRead(OFFSET_WRAPBACK_REG)
 
 /***************************************************************************
-* Initialize adsr settings
+* Function definitions
 ****************************************************************************/
 
-int initADSR(void) {
-  setAttack(calcADSRamt(0));
-  setDecay(calcADSRamt(0));
-  setSustain(0xFFFFF);
-  setRelease(calcADSRamt(0));
+int initSynth(void);
+int checkSynthCtrl(void);
+int readSynthCtrl(void);
+void generate_step_table(uint16_t duration_ms, uint16_t amplitude_start, uint16_t amplitude_end, uint16_t table[7]);
+int initADSR(void);
+int initComp(void);
+void safePlayNote(u8 note, u8 amp);
+void safeStopNote(u8 note);
+void safeSynthWrite(u32 addr, u32 data);
+u32 calcADSRamt(u8 midi_cc);
+#define MAX_NOTE 127
 
-  return XST_SUCCESS;
-}
 
-/***************************************************************************
-* Calculate adsr exponential settings
-****************************************************************************/
-
-u32 calcADSRamt(u8 midi_cc) {
-  float scaler = 1.0;
-  if (midi_cc < 4) {
-    scaler = 8.0;
-  } else if (midi_cc < 8) {
-    scaler = 4.0;
-  } else if (midi_cc < 16) {
-    scaler = 2.0;
-  } else if (midi_cc < 32) {
-    scaler = 1.0;
-  } else if (midi_cc < 64) {
-    scaler = 0.5;
-  } else if (midi_cc < 96) {
-    scaler = 0.25;
-  } else {
-    scaler = 0.125;
-  }
-  return (u32)(scaler * (128 - midi_cc)); // round to nearest
-}
-
-/***************************************************************************
-* Check synthesizer controller
-****************************************************************************/
-
-int checkSynthCtrl(void) {
-
-  u32 data;
-
-  debug_print("-----------------------------------------------------\r\n");
-  debug_print("Synthesizer Controller Test\r\n");
-  debug_print("-----------------------------------------------------\r\n");
-
-  // read revision register
-  data = readRev();
-  u16 rev_major = data >> 16;
-  u16 rev_minor = data & 0xFFFF;
-  debug_print("Revision: %X.%X ", rev_major, rev_minor);
-
-  // read date code register
-  data = readDateCode();
-  u16 year = data & 0xFFFF;
-  u8 month = data >> 16;
-  u8 day = data >> 24;
-  debug_print("Date: %02X-%02X-%04X\r\n", day, month, year);
-
-  // verify wrapback register
-  u32 testdata = 0xABCD1234;
-  debug_print("Synth controller wrapback test\r\n");
-  data = readWrapback();
-  debug_print("- Wrapback reg read:  0x%08X\r\n", data);
-  setWrapback(testdata);
-  debug_print("- Wrapback reg write: 0x%08X\r\n", testdata);
-  data = readWrapback();
-  debug_print("- Wrapback reg read:  0x%08X\r\n", data);
-
-  if (data == testdata) {
-    debug_print("PASS\r\n");
-  } else {
-    debug_print("FAIL\r\n");
-    return XST_FAILURE;
-  }
-
-  return XST_SUCCESS;
-}
-
-/***************************************************************************
-* Read synthesizer controller memory map
-****************************************************************************/
-
-int readSynthCtrl(void) {
-
-  u32 data;
-
-  for (int i = 0; i < 256; i ++) {
-
-    data = synthRead(i*4);
-    debug_print("%d: 0x%08X\r\n", i, data);
-    
-  }
-
-  return XST_SUCCESS;
-}
+#endif /* SYNTH_CTRL_H */

@@ -256,9 +256,7 @@ void print_codec_config()
   int int_part, frac_part;
 
   // print a header
-  debug_print("-----------------------------------------------------\r\n");
-  debug_print("Audio Codec Configuration\r\n");
-  debug_print("-----------------------------------------------------\r\n");
+  debug_print("%sAudio Codec Configuration\r\n%s", STR_BAR, STR_BAR);
 
   // Active
   debug_print("Active: %s\r\n", codecSSM2603.active == 1 ? "yes" : "no");
@@ -380,5 +378,5 @@ void print_codec_config()
   FLOAT_TO_INT_FRAC((1.5*temp-76.5), int_part, frac_part, 1);
   debug_print("Noise gate threshold: %d.%01d dBFS\r\n", int_part, frac_part);
 
-  debug_print("-----------------------------------------------------\r\n");
+  debug_print("%s", STR_BAR);
 }

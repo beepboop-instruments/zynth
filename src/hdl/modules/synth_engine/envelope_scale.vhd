@@ -74,8 +74,10 @@ architecture rtl of envelope_scale is
   -- note amplitude storage
   signal  note_amp_d,
           note_amps_20_d,
-          note_amps_20_q  : unsigned(ACC_WIDTH-1 downto 0);
-  signal  note_amp_q      : unsigned(WIDTH_NOTE_GAIN-1 downto 0);
+          note_amps_20_q,
+          out_gain        : unsigned(ACC_WIDTH-1 downto 0);
+  signal  note_amp_q,
+          step_gain       : unsigned(WIDTH_NOTE_GAIN-1 downto 0);
 
   signal  note_amps_q   : t_note_amp;
   signal  note_amps_acc : t_note_acc;
@@ -116,7 +118,9 @@ begin
     note_amps_acc,
     note_amps_q,
     cycle_start_q,
-    sustain_level_q
+    sustain_level_q,
+    note_amp_q,
+    step_q
 )
   begin
 
@@ -166,7 +170,6 @@ begin
         elsif (note_amp_q /= note_amps_q(note_index_q)) then
           -- reset attack amplitude if changed in this state
           adsr_state_d <= E_ATTACK;
-          note_amp_d   <= (others => '0');
         elsif (note_amps_acc(note_index_q) > sustain_level_q) then
           -- decrease note amplitude until sustain level reached
           if (note_amps_acc(note_index_q) - sustain_level_q >= step_q) then
@@ -192,7 +195,6 @@ begin
         elsif (note_amp_q /= note_amps_q(note_index_q)) then
           -- reset note amplitude and play again
           adsr_state_d <= E_ATTACK;
-          note_amp_d   <= (others => '0');
         end if;
 
       when E_RELEASE =>
@@ -200,7 +202,6 @@ begin
             note_amp_q /= to_unsigned(0, WIDTH_NOTE_GAIN)) then
           -- go to attack state if note is played again
           adsr_state_d <= E_ATTACK;
-          note_amp_d   <= (others => '0');
         elsif (note_amps_acc(note_index_q) > to_unsigned(0, WIDTH_NOTE_GAIN)) then
           -- decrease note amplitude until off
           if (note_amps_acc(note_index_q) <= step_q) then
@@ -286,6 +287,8 @@ begin
               release_amt when adsr_states_q(note_index_in) = E_RELEASE else
               (others => '0');
 
+  step_gain <= note_amps_q(note_index_in);
+
   -- scale the step size
   u_step_scaler: scaler_unsigned
   generic map (
@@ -294,7 +297,7 @@ begin
   )
   port map (
     input_word  => step_amt,
-    gain_word   => note_amps_q(note_index_in),
+    gain_word   => step_gain,
     output_word => step_d
   );
 
@@ -309,6 +312,8 @@ begin
     gain_word   => sustain_amt,
     output_word => sustain_level_d
   );
+  
+  out_gain <= note_amps_acc(note_index_in);
 
   -- scale the note based on current amplitude
   u_out_gain_scaler: scaler

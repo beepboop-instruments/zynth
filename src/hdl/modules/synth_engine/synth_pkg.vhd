@@ -15,31 +15,37 @@ library IEEE;
   use IEEE.NUMERIC_STD.ALL;
 
 package synth_pkg is
-  constant SYNTH_ENG_REV  : std_logic_vector := x"00000002";
-  constant SYNTH_ENG_DATE : std_logic_vector := x"04032025";
+  constant SYNTH_ENG_REV  : std_logic_vector := x"00000003";
+  constant SYNTH_ENG_DATE : std_logic_vector := x"04192025";
 
   -- memmory-mapped address definitions
-  constant OFFSET_PULSE_WIDTH_REG : std_logic_vector := "0000000"; --   0
-  constant OFFSET_PULSE_REG       : std_logic_vector := "0000001"; --   1
-  constant OFFSET_RAMP_REG        : std_logic_vector := "0000010"; --   2
-  constant OFFSET_SAW_REG         : std_logic_vector := "0000011"; --   3
-  constant OFFSET_TRI_REG         : std_logic_vector := "0000100"; --   4
-  constant OFFSET_SINE_REG        : std_logic_vector := "0000101"; --   5
-  constant OFFSET_GAIN_SHIFT_REG  : std_logic_vector := "0001000"; --  16
-  constant OFFSET_GAIN_SCALE_REG  : std_logic_vector := "0001001"; --  17
-  constant OFFSET_ATTACK_AMT      : std_logic_vector := "0100000"; --  32
-  constant OFFSET_DECAY_AMT       : std_logic_vector := "0100001"; --  33
-  constant OFFSET_SUSTAIN_AMT     : std_logic_vector := "0100010"; --  34
-  constant OFFSET_RELEASE_AMT     : std_logic_vector := "0100011"; --  35
-  constant OFFSET_REV_REG         : std_logic_vector := "1111000"; -- 120
-  constant OFFSET_DATE_REG        : std_logic_vector := "1111001"; -- 121
-  constant OFFSET_WRAPBACK_REG    : std_logic_vector := "1111111"; -- 127
+  constant OFFSET_PULSE_WIDTH_REG  : std_logic_vector := "0000000"; --   0
+  constant OFFSET_PULSE_REG        : std_logic_vector := "0000001"; --   1
+  constant OFFSET_RAMP_REG         : std_logic_vector := "0000010"; --   2
+  constant OFFSET_SAW_REG          : std_logic_vector := "0000011"; --   3
+  constant OFFSET_TRI_REG          : std_logic_vector := "0000100"; --   4
+  constant OFFSET_SINE_REG         : std_logic_vector := "0000101"; --   5
+  constant OFFSET_GAIN_SHIFT_REG   : std_logic_vector := "0001000"; --  16
+  constant OFFSET_GAIN_SCALE_REG   : std_logic_vector := "0001001"; --  17
+  constant OFFSET_ADSR_ATTACK_AMT  : std_logic_vector := "0100000"; --  32
+  constant OFFSET_ADSR_DECAY_AMT   : std_logic_vector := "0100001"; --  33
+  constant OFFSET_ADSR_SUSTAIN_AMT : std_logic_vector := "0100010"; --  34
+  constant OFFSET_ADSR_RELEASE_AMT : std_logic_vector := "0100011"; --  35
+  constant OFFSET_COMP_ATTACK_AMT  : std_logic_vector := "0100100"; --  36
+  constant OFFSET_COMP_RELEASE_AMT : std_logic_vector := "0100101"; --  37
+  constant OFFSET_COMP_THRESHOLD   : std_logic_vector := "0100110"; --  38
+  constant OFFSET_COMP_KNEE_WIDTH  : std_logic_vector := "0100111"; --  39
+  constant OFFSET_COMP_KNEE_SLOPE  : std_logic_vector := "0101000"; --  40
+  constant OFFSET_REV_REG          : std_logic_vector := "1111000"; -- 120
+  constant OFFSET_DATE_REG         : std_logic_vector := "1111001"; -- 121
+  constant OFFSET_WRAPBACK_REG     : std_logic_vector := "1111111"; -- 127
 
   -- vector size definitions
   constant WIDTH_WAVE_DATA   : natural := 16;
   constant WIDTH_PH_DATA     : natural := 32;
   constant WIDTH_NOTE_GAIN   : natural := 7;
   constant WIDTH_WAVE_GAIN   : natural := 7;
+  constant WIDTH_OUT_DATA    : natural := 24;
   constant WIDTH_OUT_GAIN    : natural := 7;
   constant WIDTH_OUT_SHIFT   : natural := 5;
   constant WIDTH_PULSE_WIDTH : natural := 16;

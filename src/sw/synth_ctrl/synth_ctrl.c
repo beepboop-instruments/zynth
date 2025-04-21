@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include <xstatus.h>
 #include "synth_ctrl.h"
 #include "../utils/utils.h"
 
@@ -27,11 +28,11 @@
 int initSynth(void) {
 
   setWaveAmp(SINE_WAVE, 0x1F);
-  setOutAmp(0x3F);
+  setOutAmp(0x2F);
   setOutShift(0x8);
   setPulseWidth(0x8000);
 
-  return initADSR();
+  return initADSR() + initComp();
 }
 
 /***************************************************************************
@@ -75,10 +76,24 @@ void safeSynthWrite(u32 addr, u32 data) {
 ****************************************************************************/
 
 int initADSR(void) {
-  setAttack(calcADSRamt(0));
-  setDecay(calcADSRamt(0));
-  setSustain(0xFFFFF);
-  setRelease(calcADSRamt(0));
+  setADSRAttack(calcADSRamt(0));
+  setADSRDecay(calcADSRamt(0));
+  setADSRSustain(0xFFFFF);
+  setADSRRelease(calcADSRamt(0));
+
+  return XST_SUCCESS;
+}
+
+/***************************************************************************
+* Initialize compressor settings
+****************************************************************************/
+
+int initComp(void) {
+  setCompAttack(4);
+  setCompRelease(10);
+  setCompThreshold(0x071B00);
+  setCompKneeWidth(0x2DC600);
+  setCompKneeSlope(0x50);
 
   return XST_SUCCESS;
 }

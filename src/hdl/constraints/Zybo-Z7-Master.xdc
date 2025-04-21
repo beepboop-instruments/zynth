@@ -52,7 +52,6 @@ set_property -dict {PACKAGE_PIN Y18 IOSTANDARD LVCMOS33} [get_ports ac_reclrc]
 set_property -dict {PACKAGE_PIN N18 IOSTANDARD LVCMOS33} [get_ports ac_scl]
 set_property -dict {PACKAGE_PIN N17 IOSTANDARD LVCMOS33} [get_ports ac_sda]
 
-
 ##Additional Ethernet signals
 #set_property -dict { PACKAGE_PIN F16   IOSTANDARD LVCMOS33  PULLUP true    } [get_ports { eth_int_pu_b }]; #IO_L6P_T0_35 Sch=eth_int_pu_b
 #set_property -dict { PACKAGE_PIN E17   IOSTANDARD LVCMOS33 } [get_ports { eth_rst_b }]; #IO_L3P_T0_DQS_AD1P_35 Sch=eth_rst_b
@@ -194,3 +193,21 @@ set_property -dict {PACKAGE_PIN N17 IOSTANDARD LVCMOS33} [get_ports ac_sda]
 #set_property PACKAGE_PIN W11 [get_ports {netic19_w11}]; #IO_L18P_T2_13
 #set_property PACKAGE_PIN W9 [get_ports {netic19_w9}]; #IO_L16N_T2_13
 #set_property PACKAGE_PIN Y9 [get_ports {netic19_y9}]; #IO_L14P_T2_SRCC_13
+
+set_input_delay -clock [get_clocks clk_fpga_0] 5.0 [get_ports ac_scl] -max
+set_input_delay -clock [get_clocks clk_fpga_0] 0.5 [get_ports ac_scl] -min
+set_input_delay -clock [get_clocks clk_fpga_0] 5.0 [get_ports ac_sda] -max
+set_input_delay -clock [get_clocks clk_fpga_0] 0.5 [get_ports ac_sda] -min
+
+set_output_delay -clock [get_clocks clk_fpga_0] 5.0 [get_ports ac_scl] -max
+set_output_delay -clock [get_clocks clk_fpga_0] 0.5 [get_ports ac_scl] -min
+set_output_delay -clock [get_clocks clk_fpga_0] 5.0 [get_ports ac_sda] -max
+set_output_delay -clock [get_clocks clk_fpga_0] 0.5 [get_ports ac_sda] -min
+
+set_output_delay -clock [get_clocks clk_fpga_0] 5.0 [get_ports -filter { NAME =~  "*led*" && DIRECTION == "OUT" }] -max
+set_output_delay -clock [get_clocks clk_fpga_0] 0.5 [get_ports -filter { NAME =~  "*led*" && DIRECTION == "OUT" }] -min
+
+set_false_path -from [get_clocks clk_fpga_0] -to [get_clocks -of_objects [get_pins u_mclk_mmcm/inst/mmcm_adv_inst/CLKOUT0]]
+set_false_path -from [get_clocks -of_objects [get_pins u_mclk_mmcm/inst/mmcm_adv_inst/CLKOUT0]] -to [get_clocks clk_fpga_0]
+
+

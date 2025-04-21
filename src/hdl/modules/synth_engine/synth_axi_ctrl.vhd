@@ -28,25 +28,27 @@ entity synth_axi_ctrl is
   );
   port (
     -- user clock domain
-    clk          : in  std_logic;
-    rst          : in  std_logic;
-    -- Synth controls
-    note_amps       : out t_note_amp;
-    ph_inc_table    : out t_ph_inc_lut;
-    wfrm_amps       : out t_wfrm_amp;
-    wfrm_phs        : out t_wfrm_ph;
-    out_amp         : out unsigned(WIDTH_OUT_GAIN-1 downto 0);
-    out_shift       : out unsigned(WIDTH_OUT_SHIFT-1 downto 0);
-    pulse_width     : out unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
-    attack_amt      : out unsigned(WIDTH_ADSR_CC-1 downto 0);
-    decay_amt       : out unsigned(WIDTH_ADSR_CC-1 downto 0);
-    sustain_amt     : out unsigned(WIDTH_ADSR_CC-1 downto 0);
-    release_amt     : out unsigned(WIDTH_ADSR_CC-1 downto 0);
-
-    -- Global Clock Signal
-    S_AXI_ACLK  : in std_logic;
-    -- Global Reset Signal. This Signal is Active LOW
-    S_AXI_ARESETN  : in std_logic;
+    clk                : in  std_logic;
+    rst                : in  std_logic;
+    -- synth controls
+    note_amps          : out t_note_amp;
+    ph_inc_table       : out t_ph_inc_lut;
+    wfrm_amps          : out t_wfrm_amp;
+    wfrm_phs           : out t_wfrm_ph;
+    out_amp            : out unsigned(WIDTH_OUT_GAIN-1 downto 0);
+    out_shift          : out unsigned(WIDTH_OUT_SHIFT-1 downto 0);
+    pulse_width        : out unsigned(WIDTH_PULSE_WIDTH-1 downto 0);
+    adsr_attack_amt    : out unsigned(WIDTH_ADSR_CC-1 downto 0);
+    adsr_decay_amt     : out unsigned(WIDTH_ADSR_CC-1 downto 0);
+    adsr_sustain_amt   : out unsigned(WIDTH_ADSR_CC-1 downto 0);
+    adsr_release_amt   : out unsigned(WIDTH_ADSR_CC-1 downto 0);
+    -- compressor controls
+    comp_attack_amt    : out integer;
+    comp_release_amt   : out integer;
+    comp_threshold     : out unsigned(WIDTH_WAVE_DATA+7 downto 0);
+    comp_knee_width    : out unsigned(WIDTH_WAVE_DATA+7 downto 0);
+    comp_knee_slope    : out unsigned(WIDTH_WAVE_GAIN-1 downto 0);
+    
     -- Write address (issued by master, accepted by Slave)
     S_AXI_AWADDR  : in std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
     -- Write channel Protection type. This signal indicates the
@@ -131,12 +133,6 @@ architecture arch_imp of synth_axi_ctrl is
   -- phase increment table array
   signal ph_inc_table_int : t_ph_inc_lut;
 
-  -- adsr arrays
-  signal  attack_steps_int,
-          decay_steps_int,
-          sustain_levels_int,
-          release_steps_int    : t_adsr;
-
   -- memory-mapped registers
   signal  pulse_width_reg,
           pulse_reg,
@@ -144,10 +140,15 @@ architecture arch_imp of synth_axi_ctrl is
           saw_reg,
           tri_reg,
           sine_reg,
-          attack_reg,
-          decay_reg,
-          sustain_reg,
-          release_reg,
+          adsr_attack_reg,
+          adsr_decay_reg,
+          adsr_sustain_reg,
+          adsr_release_reg,
+          comp_attack_reg,
+          comp_release_reg,
+          comp_threshold_reg,
+          comp_knee_width_reg,
+          comp_knee_slope_reg,
           out_amp_reg,
           out_shift_reg,
           wrapback_reg   : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
@@ -191,10 +192,16 @@ begin
 
   pulse_width <= unsigned(pulse_width_reg(WIDTH_PULSE_WIDTH-1 downto 0));
 
-  attack_amt  <= unsigned(attack_reg(WIDTH_ADSR_CC-1 downto 0));
-  decay_amt   <= unsigned(decay_reg(WIDTH_ADSR_CC-1 downto 0));
-  sustain_amt <= unsigned(sustain_reg(WIDTH_ADSR_CC-1 downto 0));
-  release_amt <= unsigned(release_reg(WIDTH_ADSR_CC-1 downto 0));
+  adsr_attack_amt  <= unsigned(adsr_attack_reg(WIDTH_ADSR_CC-1 downto 0));
+  adsr_decay_amt   <= unsigned(adsr_decay_reg(WIDTH_ADSR_CC-1 downto 0));
+  adsr_sustain_amt <= unsigned(adsr_sustain_reg(WIDTH_ADSR_CC-1 downto 0));
+  adsr_release_amt <= unsigned(adsr_release_reg(WIDTH_ADSR_CC-1 downto 0));
+
+  comp_attack_amt  <= to_integer(unsigned(comp_attack_reg));
+  comp_release_amt <= to_integer(unsigned(comp_release_reg));
+  comp_threshold   <= unsigned(comp_threshold_reg(WIDTH_WAVE_DATA+7 downto 0));
+  comp_knee_width  <= unsigned(comp_knee_width_reg(WIDTH_WAVE_DATA+7 downto 0));
+  comp_knee_slope  <= unsigned(comp_knee_slope_reg(WIDTH_WAVE_GAIN-1 downto 0));
 
   out_amp   <= unsigned(out_amp_reg(WIDTH_OUT_GAIN-1 downto 0));
   out_shift <= unsigned(out_shift_reg(WIDTH_OUT_SHIFT-1 downto 0));
@@ -337,10 +344,6 @@ begin
         wrapback_reg       <= (others => '0');
         note_amps_int      <= (others => (others => '0'));
         ph_inc_table_int   <= ph_inc_lut;
-        attack_steps_int   <= (others => (others => '0'));
-        decay_steps_int    <= (others => (others => '0'));
-        sustain_levels_int <= (others => (others => '0'));
-        release_steps_int  <= (others => (others => '0'));
       else
         if (S_AXI_WVALID = '1') then
           case(mem_logic(mem_logic'high downto mem_logic'high-1)) is
@@ -352,35 +355,45 @@ begin
             when "01" =>
               -- Registers for synth settings
               case(mem_logic(mem_logic'high-2 downto ADDR_LSB)) is
-                when OFFSET_PULSE_WIDTH_REG  => write_strobe(pulse_width_reg,    S_AXI_WDATA, S_AXI_WSTRB);
-                when OFFSET_PULSE_REG        => write_strobe(pulse_reg,          S_AXI_WDATA, S_AXI_WSTRB);
-                when OFFSET_RAMP_REG         => write_strobe(ramp_reg,           S_AXI_WDATA, S_AXI_WSTRB);
-                when OFFSET_SAW_REG          => write_strobe(saw_reg,            S_AXI_WDATA, S_AXI_WSTRB);
-                when OFFSET_TRI_REG          => write_strobe(tri_reg,            S_AXI_WDATA, S_AXI_WSTRB);
-                when OFFSET_SINE_REG         => write_strobe(sine_reg,           S_AXI_WDATA, S_AXI_WSTRB);
-                when OFFSET_ATTACK_AMT       => write_strobe(attack_reg,         S_AXI_WDATA, S_AXI_WSTRB);
-                when OFFSET_DECAY_AMT        => write_strobe(decay_reg,          S_AXI_WDATA, S_AXI_WSTRB);
-                when OFFSET_SUSTAIN_AMT      => write_strobe(sustain_reg,        S_AXI_WDATA, S_AXI_WSTRB);
-                when OFFSET_RELEASE_AMT      => write_strobe(release_reg,        S_AXI_WDATA, S_AXI_WSTRB);
-                when OFFSET_GAIN_SCALE_REG   => write_strobe(out_amp_reg,        S_AXI_WDATA, S_AXI_WSTRB);
-                when OFFSET_GAIN_SHIFT_REG   => write_strobe(out_shift_reg,      S_AXI_WDATA, S_AXI_WSTRB);
-                when OFFSET_WRAPBACK_REG     => write_strobe(wrapback_reg,       S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_PULSE_WIDTH_REG  => write_strobe(pulse_width_reg,     S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_PULSE_REG        => write_strobe(pulse_reg,           S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_RAMP_REG         => write_strobe(ramp_reg,            S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_SAW_REG          => write_strobe(saw_reg,             S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_TRI_REG          => write_strobe(tri_reg,             S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_SINE_REG         => write_strobe(sine_reg,            S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_ADSR_ATTACK_AMT  => write_strobe(adsr_attack_reg,     S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_ADSR_DECAY_AMT   => write_strobe(adsr_decay_reg,      S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_ADSR_SUSTAIN_AMT => write_strobe(adsr_sustain_reg,    S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_ADSR_RELEASE_AMT => write_strobe(adsr_release_reg,    S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_COMP_ATTACK_AMT  => write_strobe(comp_attack_reg,     S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_COMP_RELEASE_AMT => write_strobe(comp_release_reg,    S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_COMP_THRESHOLD   => write_strobe(comp_threshold_reg,  S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_COMP_KNEE_WIDTH  => write_strobe(comp_knee_width_reg, S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_COMP_KNEE_SLOPE  => write_strobe(comp_knee_slope_reg, S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_GAIN_SCALE_REG   => write_strobe(out_amp_reg,         S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_GAIN_SHIFT_REG   => write_strobe(out_shift_reg,       S_AXI_WDATA, S_AXI_WSTRB);
+                when OFFSET_WRAPBACK_REG     => write_strobe(wrapback_reg,        S_AXI_WDATA, S_AXI_WSTRB);
                 
                 when others =>
 
-                  pulse_width_reg    <= pulse_width_reg;
-                  pulse_reg          <= pulse_reg;
-                  ramp_reg           <= ramp_reg;
-                  saw_reg            <= saw_reg;
-                  tri_reg            <= tri_reg;
-                  sine_reg           <= sine_reg;
-                  attack_reg         <= attack_reg;
-                  decay_reg          <= decay_reg;
-                  sustain_reg        <= sustain_reg;
-                  release_reg        <= release_reg;
-                  out_amp_reg        <= out_amp_reg;
-                  out_shift_reg      <= out_shift_reg;
-                  wrapback_reg       <= wrapback_reg;
+                  pulse_width_reg     <= pulse_width_reg;
+                  pulse_reg           <= pulse_reg;
+                  ramp_reg            <= ramp_reg;
+                  saw_reg             <= saw_reg;
+                  tri_reg             <= tri_reg;
+                  sine_reg            <= sine_reg;
+                  adsr_attack_reg     <= adsr_attack_reg;
+                  adsr_decay_reg      <= adsr_decay_reg;
+                  adsr_sustain_reg    <= adsr_sustain_reg;
+                  adsr_release_reg    <= adsr_release_reg;
+                  comp_attack_reg     <= comp_attack_reg;
+                  comp_release_reg    <= comp_release_reg;
+                  comp_threshold_reg  <= comp_threshold_reg;
+                  comp_knee_slope_reg <= comp_knee_slope_reg;
+                  comp_knee_width_reg <= comp_knee_width_reg;
+                  out_amp_reg         <= out_amp_reg;
+                  out_shift_reg       <= out_shift_reg;
+                  wrapback_reg        <= wrapback_reg;
               
               end case;
             
@@ -449,23 +462,29 @@ begin
     -- read from note phase increment table
     std_logic_vector(ph_inc_table_int(to_integer(unsigned(axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB))))) when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS downto ADDR_LSB+OPT_MEM_ADDR_BITS-1) = "10" ) else
     -- read from synth settings
-    pulse_width_reg    when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_PULSE_WIDTH_REG   ) else 
-    pulse_reg          when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_PULSE_REG         ) else 
-    ramp_reg           when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_RAMP_REG          ) else 
-    saw_reg            when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_SAW_REG           ) else 
-    tri_reg            when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_TRI_REG           ) else 
-    sine_reg           when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_SINE_REG          ) else 
-    out_amp_reg        when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_GAIN_SCALE_REG    ) else
-    out_shift_reg      when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_GAIN_SHIFT_REG    ) else
+    pulse_width_reg     when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_PULSE_WIDTH_REG   ) else 
+    pulse_reg           when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_PULSE_REG         ) else 
+    ramp_reg            when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_RAMP_REG          ) else 
+    saw_reg             when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_SAW_REG           ) else 
+    tri_reg             when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_TRI_REG           ) else 
+    sine_reg            when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_SINE_REG          ) else 
+    out_amp_reg         when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_GAIN_SCALE_REG    ) else
+    out_shift_reg       when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_GAIN_SHIFT_REG    ) else
     -- read from adsr settings
-    attack_reg         when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_ATTACK_AMT        ) else
-    decay_reg          when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_DECAY_AMT         ) else
-    sustain_reg        when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_SUSTAIN_AMT       ) else
-    release_reg        when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_RELEASE_AMT       ) else
+    adsr_attack_reg     when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_ADSR_ATTACK_AMT   ) else
+    adsr_decay_reg      when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_ADSR_DECAY_AMT    ) else
+    adsr_sustain_reg    when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_ADSR_SUSTAIN_AMT  ) else
+    adsr_release_reg    when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_ADSR_RELEASE_AMT  ) else
+    -- read from compressor settings
+    comp_attack_reg     when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_COMP_ATTACK_AMT   ) else
+    comp_release_reg    when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_COMP_RELEASE_AMT  ) else
+    comp_threshold_reg  when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_COMP_THRESHOLD    ) else
+    comp_knee_width_reg when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_COMP_KNEE_WIDTH   ) else
+    comp_knee_slope_reg when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_COMP_KNEE_SLOPE   ) else
     -- read from info registers
-    SYNTH_ENG_REV      when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_REV_REG           ) else 
-    SYNTH_ENG_DATE     when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_DATE_REG          ) else 
-    wrapback_reg       when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_WRAPBACK_REG      ) else 
+    SYNTH_ENG_REV       when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_REV_REG           ) else 
+    SYNTH_ENG_DATE      when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_DATE_REG          ) else 
+    wrapback_reg        when (axi_araddr(ADDR_LSB+OPT_MEM_ADDR_BITS-2 downto ADDR_LSB) = OFFSET_WRAPBACK_REG      ) else 
     -- default
     (others => '0');
 

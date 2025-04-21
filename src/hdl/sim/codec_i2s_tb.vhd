@@ -86,7 +86,7 @@ architecture Behavioral of codec_i2s_tb is
   signal clk25    : std_logic := '0';
   signal rst25    : std_logic := '1';
 
-  signal clk100   : std_logic;
+  signal clk100   : std_logic := '0';
   
   signal mclk_12p88 : std_logic;
   signal mclk       : std_logic;
@@ -103,6 +103,8 @@ begin
   clk25 <= not clk25 after 20 ns;
   rst25 <= '0' after 50 ns;
   
+  clk100 <= not clk100 after 5 ns;
+  
   rst_sync <= rst25 or not(clk25_locked);
   
   
@@ -112,7 +114,7 @@ u_mclk_mmcm: clk_wiz_mclk
     reset         => rst25,
     clk_in1       => clk100,
     locked        => clk25_locked,
-    clk_out1     => mclk_12p88
+    clk_out1      => mclk_12p88
   );
 
   u_mclk_25_to_100: clk_wiz_25_to_100
@@ -120,7 +122,7 @@ u_mclk_mmcm: clk_wiz_mclk
       reset         => rst25,
       clk_in1       => clk25,
       locked        => open,
-      clk_out1     => clk100
+      clk_out1      => clk100
     );
 
   -- Audio codec
